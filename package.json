@@ -1,0 +1,17 @@
+{
+  "name": "ephemeral-broker",
+  "version": "0.0.1",
+  "type": "module",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./broker": "./src/broker.js",
+    "./client": "./src/client.js"
+  },
+  "scripts": {
+    "test": "node test/basic.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
