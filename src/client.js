@@ -141,4 +141,25 @@ export class Client {
     const response = await this.request({ action: 'stats' })
     return response.stats
   }
+
+  async lease(key, workerId, ttl) {
+    if (!key) {
+      throw new Error('Key is required for lease()')
+    }
+    if (!workerId) {
+      throw new Error('Worker ID is required for lease()')
+    }
+
+    const response = await this.request({ action: 'lease', key, workerId, ttl })
+    return response.value
+  }
+
+  async release(workerId) {
+    if (!workerId) {
+      throw new Error('Worker ID is required for release()')
+    }
+
+    const response = await this.request({ action: 'release', workerId })
+    return response.released
+  }
 }

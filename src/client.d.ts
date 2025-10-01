@@ -26,7 +26,8 @@ export class Client {
     key?: string
     value?: any
     ttl?: number
-  }): Promise<{ ok: boolean; value?: any; items?: any; pong?: number; stats?: Stats; error?: string }>
+    workerId?: string
+  }): Promise<{ ok: boolean; value?: any; items?: any; pong?: number; stats?: Stats; released?: boolean; error?: string }>
 
   get(key: string): Promise<any>
   set(key: string, value: any, ttl?: number): Promise<boolean>
@@ -34,4 +35,6 @@ export class Client {
   list(): Promise<Record<string, { expires: number; hasValue: boolean }>>
   ping(): Promise<number>
   stats(): Promise<Stats>
+  lease(key: string, workerId: string, ttl?: number): Promise<number>
+  release(workerId: string): Promise<boolean>
 }

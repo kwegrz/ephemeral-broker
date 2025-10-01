@@ -16,6 +16,7 @@ export class Broker {
 
     this.pipe = makePipePath(options.pipeId)
     this.store = new Map()
+    this.leases = new Map() // workerId -> { key, value, expires }
     this.server = null
     this.child = null
     this.sweeperInterval = null
@@ -171,6 +172,12 @@ export class Broker {
     case 'stats':
       response = this.handleStats()
       break
+    case 'lease':
+      response = this.handleLease(msg)
+      break
+    case 'release':
+      response = this.handleRelease(msg)
+      break
     default:
       response = { ok: false, error: 'unknown_action' }
     }
@@ -256,9 +263,79 @@ export class Broker {
     return { ok: true, items }
   }
 
+  handleLease({ key, workerId, ttl }) {
+    if (!key || !workerId) {
+      return { ok: false, error: 'key_and_worker_required' }
+    }
+
+    const now = Date.now()
+
+    // Clean up expired leases first
+    for (const [wid, lease] of this.leases.entries()) {
+      if (lease.expires && lease.expires <= now) {
+        this.leases.delete(wid)
+      }
+    }
+
+    // Check if worker already has a lease
+    const existingLease = this.leases.get(workerId)
+    if (existingLease) {
+      // If it's for the same key and still valid, renew it
+      if (existingLease.key === key) {
+        const expires = ttl ? now + ttl : now + this.options.defaultTTL
+        existingLease.expires = expires
+        return { ok: true, value: existingLease.value }
+      } else {
+        // Worker trying to lease different key without releasing
+        return { ok: false, error: 'worker_already_has_lease' }
+      }
+    }
+
+    // Get all leased values for this key
+    const leasedValues = new Set()
+    for (const lease of this.leases.values()) {
+      if (lease.key === key && (!lease.expires || lease.expires > now)) {
+        leasedValues.add(lease.value)
+      }
+    }
+
+    // Generate unique value for this worker
+    let value = 0
+    while (leasedValues.has(value)) {
+      value++
+    }
+
+    const expires = ttl ? now + ttl : now + this.options.defaultTTL
+
+    this.leases.set(workerId, { key, value, expires })
+
+    if (this.options.debug) {
+      console.log(
+        `[broker] Leased ${key}=${value} to worker ${workerId} with TTL ${ttl || this.options.defaultTTL}ms`
+      )
+    }
+
+    return { ok: true, value }
+  }
+
+  handleRelease({ workerId }) {
+    if (!workerId) {
+      return { ok: false, error: 'worker_required' }
+    }
+
+    const existed = this.leases.delete(workerId)
+
+    if (this.options.debug && existed) {
+      console.log(`[broker] Released lease for worker ${workerId}`)
+    }
+
+    return { ok: true, released: existed }
+  }
+
   handleStats() {
     const now = Date.now()
     let activeItems = 0
+    let activeLeases = 0
     let approximateBytes = 0
 
     // Count non-expired items and approximate storage size
@@ -276,11 +353,18 @@ export class Broker {
       }
     }
 
+    // Count non-expired leases
+    for (const lease of this.leases.values()) {
+      if (!lease.expires || lease.expires > now) {
+        activeLeases++
+      }
+    }
+
     return {
       ok: true,
       stats: {
         items: activeItems,
-        leases: 0, // TODO: implement leases in future
+        leases: activeLeases,
         memory: {
           rss: process.memoryUsage().rss,
           heapUsed: process.memoryUsage().heapUsed,
@@ -335,17 +419,27 @@ export class Broker {
 
   sweepExpired() {
     const now = Date.now()
-    let swept = 0
+    let sweptItems = 0
+    let sweptLeases = 0
 
+    // Sweep expired items
     for (const [key, item] of this.store.entries()) {
       if (item.expires && item.expires <= now) {
         this.store.delete(key)
-        swept++
+        sweptItems++
       }
     }
 
-    if (swept > 0 && this.options.debug) {
-      console.log(`[broker] Swept ${swept} expired entries`)
+    // Sweep expired leases
+    for (const [workerId, lease] of this.leases.entries()) {
+      if (lease.expires && lease.expires <= now) {
+        this.leases.delete(workerId)
+        sweptLeases++
+      }
+    }
+
+    if ((sweptItems > 0 || sweptLeases > 0) && this.options.debug) {
+      console.log(`[broker] Swept ${sweptItems} expired items, ${sweptLeases} expired leases`)
     }
   }
 

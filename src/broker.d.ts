@@ -25,6 +25,7 @@ export class Broker {
   options: Required<Omit<BrokerOptions, 'pipeId'>> & { pipeId?: string }
   pipe: string
   store: Map<string, { value: any; expires: number }>
+  leases: Map<string, { key: string; value: number; expires: number }>
   server: Server | null
   child: ChildProcess | null
   sweeperInterval: NodeJS.Timeout | null
@@ -42,6 +43,8 @@ export class Broker {
   handleSet(msg: { key: string; value: any; ttl?: number }): { ok: boolean; error?: string }
   handleDel(msg: { key: string }): { ok: boolean }
   handleList(): { ok: boolean; items: Record<string, { expires: number; hasValue: boolean }> }
+  handleLease(msg: { key: string; workerId: string; ttl?: number }): { ok: boolean; value?: number; error?: string }
+  handleRelease(msg: { workerId: string }): { ok: boolean; released?: boolean; error?: string }
   handleStats(): { ok: boolean; stats: BrokerStats }
   spawn(command: string, args?: string[]): ChildProcess
   startSweeper(): void
