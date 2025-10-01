@@ -10,6 +10,7 @@ export class Broker {
       debug: options.debug || false,
       maxRequestSize: options.maxRequestSize || 1024 * 1024, // 1MB default
       maxValueSize: options.maxValueSize || 256 * 1024, // 256KB default
+      maxItems: options.maxItems !== undefined ? options.maxItems : 10000,
       ...options
     }
 
@@ -204,6 +205,22 @@ export class Broker {
       const serialized = JSON.stringify(value)
       if (serialized.length > this.options.maxValueSize) {
         return { ok: false, error: 'too_large' }
+      }
+    }
+
+    // Check maxItems limit (only if adding a new key)
+    if (!this.store.has(key) && this.options.maxItems > 0) {
+      // Count non-expired items
+      const now = Date.now()
+      let activeCount = 0
+      for (const [, item] of this.store.entries()) {
+        if (!item.expires || item.expires > now) {
+          activeCount++
+        }
+      }
+
+      if (activeCount >= this.options.maxItems) {
+        return { ok: false, error: 'max_items' }
       }
     }
 

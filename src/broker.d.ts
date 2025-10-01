@@ -6,6 +6,7 @@ export interface BrokerOptions {
   debug?: boolean
   maxRequestSize?: number
   maxValueSize?: number
+  maxItems?: number
   pipeId?: string
 }
 
