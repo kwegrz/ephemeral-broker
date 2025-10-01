@@ -27,7 +27,10 @@ export class Client {
 
         // Check if error is retryable
         const isRetryable =
-          err.code === 'ECONNREFUSED' || err.code === 'ENOENT' || err.code === 'EPIPE'
+          err.code === 'ECONNREFUSED' ||
+          err.code === 'ENOENT' ||
+          err.code === 'EPIPE' ||
+          err.code === 'ETIMEDOUT'
 
         // If not retryable or we're out of retries, throw the error
         if (!isRetryable || attempt === retryDelays.length) {

@@ -12,20 +12,20 @@ export class Broker {
       maxValueSize: options.maxValueSize || 256 * 1024, // 256KB default
       ...options
     }
-    
+
     this.pipe = makePipePath(options.pipeId)
     this.store = new Map()
     this.server = null
     this.child = null
     this.sweeperInterval = null
   }
-  
+
   async start() {
     // Check for stale socket on Unix systems
     if (process.platform !== 'win32' && fs.existsSync(this.pipe)) {
       // Try to connect to see if broker is already running
       const isRunning = await this.checkIfBrokerRunning()
-      
+
       if (isRunning) {
         throw new Error('Broker already running')
       } else {
@@ -36,43 +36,43 @@ export class Broker {
         fs.unlinkSync(this.pipe)
       }
     }
-    
+
     return new Promise((resolve, reject) => {
       this.server = net.createServer(this.handleConnection.bind(this))
-      
+
       this.server.once('error', reject)
-      
+
       this.server.listen(this.pipe, () => {
         if (this.options.debug) {
           console.log(`[broker] Started on: ${this.pipe}`)
         }
-        
+
         // Export pipe path for child processes
         process.env.EPHEMERAL_PIPE = this.pipe
-        
+
         // Start TTL sweeper - runs every 30 seconds
         this.startSweeper()
-        
+
         resolve(this.pipe)
       })
     })
   }
-  
+
   async checkIfBrokerRunning() {
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const client = net.createConnection(this.pipe)
-      
+
       client.once('connect', () => {
         // Connected successfully - broker is running
         client.end()
         resolve(true)
       })
-      
+
       client.once('error', () => {
         // Connection failed - broker is not running
         resolve(false)
       })
-      
+
       // Set timeout in case connection hangs
       client.setTimeout(1000)
       client.once('timeout', () => {
@@ -81,37 +81,37 @@ export class Broker {
       })
     })
   }
-  
+
   handleConnection(socket) {
     let buffer = ''
-    
-    socket.on('data', (chunk) => {
+
+    socket.on('data', chunk => {
       buffer += chunk.toString('utf8')
-      
+
       // Check request size limit
       if (buffer.length > this.options.maxRequestSize) {
         socket.write(JSON.stringify({ ok: false, error: 'too_large' }) + '\n')
         socket.end()
         return
       }
-      
+
       // Process complete messages (newline-delimited)
       let idx
       while ((idx = buffer.indexOf('\n')) >= 0) {
         const line = buffer.slice(0, idx)
         buffer = buffer.slice(idx + 1)
-        
+
         this.processMessage(line, socket)
       }
     })
-    
-    socket.on('error', (err) => {
+
+    socket.on('error', err => {
       if (this.options.debug) {
         console.log(`[broker] Socket error: ${err.message}`)
       }
     })
   }
-  
+
   async processMessage(line, socket) {
     let msg
     try {
@@ -120,57 +120,57 @@ export class Broker {
       socket.write(JSON.stringify({ ok: false, error: 'invalid_json' }) + '\n')
       return
     }
-    
+
     if (this.options.debug) {
       console.log(`[broker] Request: ${msg.action}`)
     }
-    
+
     let response
     switch (msg.action) {
-      case 'get':
-        response = this.handleGet(msg)
-        break
-      case 'set':
-        response = this.handleSet(msg)
-        break
-      case 'del':
-        response = this.handleDel(msg)
-        break
-      case 'list':
-        response = this.handleList()
-        break
-      case 'ping':
-        response = { ok: true, pong: Date.now() }
-        break
-      default:
-        response = { ok: false, error: 'unknown_action' }
+    case 'get':
+      response = this.handleGet(msg)
+      break
+    case 'set':
+      response = this.handleSet(msg)
+      break
+    case 'del':
+      response = this.handleDel(msg)
+      break
+    case 'list':
+      response = this.handleList()
+      break
+    case 'ping':
+      response = { ok: true, pong: Date.now() }
+      break
+    default:
+      response = { ok: false, error: 'unknown_action' }
     }
-    
+
     socket.write(JSON.stringify(response) + '\n')
   }
-  
+
   handleGet({ key }) {
     const item = this.store.get(key)
-    
+
     if (!item) {
       return { ok: false, error: 'not_found' }
     }
-    
+
     // Check if expired
     if (item.expires && item.expires <= Date.now()) {
       this.store.delete(key)
       return { ok: false, error: 'expired' }
     }
-    
+
     return { ok: true, value: item.value }
   }
-  
+
   handleSet({ key, value, ttl }) {
     // Check value size limit
     if (value && typeof value === 'string' && value.length > this.options.maxValueSize) {
       return { ok: false, error: 'too_large' }
     }
-    
+
     // Check serialized size for non-string values
     if (value && typeof value !== 'string') {
       const serialized = JSON.stringify(value)
@@ -178,29 +178,27 @@ export class Broker {
         return { ok: false, error: 'too_large' }
       }
     }
-    
-    const expires = ttl 
-      ? Date.now() + ttl
-      : Date.now() + this.options.defaultTTL
-    
+
+    const expires = ttl ? Date.now() + ttl : Date.now() + this.options.defaultTTL
+
     this.store.set(key, { value, expires })
-    
+
     if (this.options.debug) {
       console.log(`[broker] Set ${key} with TTL ${ttl || this.options.defaultTTL}ms`)
     }
-    
+
     return { ok: true }
   }
-  
+
   handleDel({ key }) {
     this.store.delete(key)
     return { ok: true }
   }
-  
+
   handleList() {
     const items = {}
     const now = Date.now()
-    
+
     for (const [key, item] of this.store.entries()) {
       if (!item.expires || item.expires > now) {
         items[key] = {
@@ -209,10 +207,10 @@ export class Broker {
         }
       }
     }
-    
+
     return { ok: true, items }
   }
-  
+
   spawn(command, args = []) {
     // Spawn a child process with the pipe available
     this.child = spawn(command, args, {
@@ -222,15 +220,15 @@ export class Broker {
         EPHEMERAL_PIPE: this.pipe
       }
     })
-    
-    this.child.on('exit', (code) => {
+
+    this.child.on('exit', code => {
       if (this.options.debug) {
         console.log(`[broker] Child exited with code ${code}`)
       }
       this.stop()
       process.exit(code || 0)
     })
-    
+
     // Handle signals
     for (const sig of ['SIGINT', 'SIGTERM']) {
       process.on(sig, () => {
@@ -241,51 +239,51 @@ export class Broker {
         process.exit(1)
       })
     }
-    
+
     return this.child
   }
-  
+
   startSweeper() {
     // Run sweeper every 30 seconds
     this.sweeperInterval = setInterval(() => {
       this.sweepExpired()
     }, 30000)
-    
+
     // Don't let the interval keep the process alive
     this.sweeperInterval.unref()
   }
-  
+
   sweepExpired() {
     const now = Date.now()
     let swept = 0
-    
+
     for (const [key, item] of this.store.entries()) {
       if (item.expires && item.expires <= now) {
         this.store.delete(key)
         swept++
       }
     }
-    
+
     if (swept > 0 && this.options.debug) {
       console.log(`[broker] Swept ${swept} expired entries`)
     }
   }
-  
+
   stop() {
     // Clear sweeper interval
     if (this.sweeperInterval) {
       clearInterval(this.sweeperInterval)
       this.sweeperInterval = null
     }
-    
+
     if (this.server) {
       this.server.close()
       this.server = null
     }
-    
+
     cleanupPipe(this.pipe)
     this.store.clear()
-    
+
     if (this.options.debug) {
       console.log('[broker] Stopped and cleaned up')
     }
