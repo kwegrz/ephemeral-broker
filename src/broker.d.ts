@@ -28,10 +28,12 @@ export class Broker {
   child: ChildProcess | null
   sweeperInterval: NodeJS.Timeout | null
   startTime: number | null
+  signalHandlers: Map<string, () => void>
 
   constructor(options?: BrokerOptions)
 
   start(): Promise<string>
+  setupSignalHandlers(): void
   checkIfBrokerRunning(): Promise<boolean>
   handleConnection(socket: import('node:net').Socket): void
   processMessage(line: string, socket: import('node:net').Socket): Promise<void>

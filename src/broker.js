@@ -19,6 +19,7 @@ export class Broker {
     this.child = null
     this.sweeperInterval = null
     this.startTime = null
+    this.signalHandlers = new Map()
   }
 
   async start() {
@@ -57,9 +58,29 @@ export class Broker {
         // Start TTL sweeper - runs every 30 seconds
         this.startSweeper()
 
+        // Set up graceful shutdown handlers
+        this.setupSignalHandlers()
+
         resolve(this.pipe)
       })
     })
+  }
+
+  setupSignalHandlers() {
+    const signals = ['SIGINT', 'SIGTERM']
+
+    for (const signal of signals) {
+      const handler = () => {
+        if (this.options.debug) {
+          console.log(`[broker] Received ${signal}, shutting down gracefully...`)
+        }
+        this.stop()
+        process.exit(0)
+      }
+
+      this.signalHandlers.set(signal, handler)
+      process.on(signal, handler)
+    }
   }
 
   async checkIfBrokerRunning() {
@@ -312,6 +333,12 @@ export class Broker {
   }
 
   stop() {
+    // Remove signal handlers to avoid memory leaks
+    for (const [signal, handler] of this.signalHandlers.entries()) {
+      process.removeListener(signal, handler)
+    }
+    this.signalHandlers.clear()
+
     // Clear sweeper interval
     if (this.sweeperInterval) {
       clearInterval(this.sweeperInterval)
