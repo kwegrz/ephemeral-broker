@@ -11,6 +11,7 @@ export class Client {
     this.options = {
       timeout: options.timeout || 5000,
       debug: options.debug || false,
+      allowNoTtl: options.allowNoTtl || false,
       ...options
     }
   }
@@ -110,6 +111,13 @@ export class Client {
   }
 
   async set(key, value, ttl) {
+    // Enforce TTL requirement unless allowNoTtl is set
+    if (ttl === undefined && !this.options.allowNoTtl) {
+      throw new Error(
+        'TTL is required for set(). Pass a ttl value or set allowNoTtl: true in client options.'
+      )
+    }
+
     await this.request({ action: 'set', key, value, ttl })
     return true
   }

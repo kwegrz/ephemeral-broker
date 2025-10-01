@@ -9,7 +9,7 @@ describe('Stats Endpoint', () => {
   before(async () => {
     broker = new Broker({ debug: false })
     const pipe = await broker.start()
-    client = new Client(pipe, { debug: false })
+    client = new Client(pipe, { debug: false, allowNoTtl: true })
   })
 
   after(() => {

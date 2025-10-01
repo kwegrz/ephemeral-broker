@@ -15,7 +15,7 @@ async function testSizeLimits() {
 
   try {
     const pipePath = await broker1.start()
-    const client = new Client(pipePath, { debug: true })
+    const client = new Client(pipePath, { debug: true, allowNoTtl: true })
 
     // Create a 300KB string
     const bigValue = 'x'.repeat(300_000)
@@ -67,7 +67,7 @@ async function testSizeLimits() {
 
   try {
     const pipePath = await broker2.start()
-    const client = new Client(pipePath, { debug: true })
+    const client = new Client(pipePath, { debug: true, allowNoTtl: true })
 
     // Create a request that's too large (15KB)
     const hugeValue = 'y'.repeat(15_000)
@@ -102,7 +102,7 @@ async function testSizeLimits() {
 
   try {
     const pipePath = await broker3.start()
-    const client = new Client(pipePath)
+    const client = new Client(pipePath, { allowNoTtl: true })
 
     // Default maxValueSize is 256KB
     const value256KB = 'z'.repeat(256 * 1024)
@@ -144,7 +144,7 @@ async function testSizeLimits() {
 
   try {
     const pipePath = await broker4.start()
-    const client = new Client(pipePath)
+    const client = new Client(pipePath, { allowNoTtl: true })
 
     // Create an object that serializes to more than 1KB
     const bigObject = {

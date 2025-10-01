@@ -25,7 +25,7 @@ describe('Connection Error Handling', () => {
     it('should handle closed pipe after connection', async () => {
       const broker = new Broker({ debug: false })
       const pipe = await broker.start()
-      const client = new Client(pipe, { timeout: 1000, debug: false })
+      const client = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
 
       // Verify connection works
       await client.set('test', 'value')
@@ -46,7 +46,7 @@ describe('Connection Error Handling', () => {
     it('should error cleanly when broker is killed during operation', async () => {
       const broker = new Broker({ debug: false })
       const pipe = await broker.start()
-      const client = new Client(pipe, { timeout: 2000, debug: false })
+      const client = new Client(pipe, { timeout: 2000, debug: false, allowNoTtl: true })
 
       // Start a request and kill broker immediately
       const requestPromise = client.set('test', 'value')
@@ -72,9 +72,9 @@ describe('Connection Error Handling', () => {
       const broker = new Broker({ debug: false })
       const pipe = await broker.start()
 
-      const client1 = new Client(pipe, { timeout: 1000, debug: false })
-      const client2 = new Client(pipe, { timeout: 1000, debug: false })
-      const client3 = new Client(pipe, { timeout: 1000, debug: false })
+      const client1 = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
+      const client2 = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
+      const client3 = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
 
       // All clients make requests
       const promises = [
@@ -110,7 +110,7 @@ describe('Connection Error Handling', () => {
 
       // For now, just verify timeout error structure
       // Set a very short timeout and hope for a race condition
-      const fastClient = new Client(pipe, { timeout: 1, debug: false })
+      const fastClient = new Client(pipe, { timeout: 1, debug: false, allowNoTtl: true })
       try {
         await fastClient.ping()
         // Might succeed if fast enough - that's OK
@@ -141,7 +141,7 @@ describe('Connection Error Handling', () => {
     it('should not retry on non-retryable errors', async () => {
       const broker = new Broker({ debug: false, maxRequestSize: 100 })
       const pipe = await broker.start()
-      const client = new Client(pipe, { timeout: 5000, debug: false })
+      const client = new Client(pipe, { timeout: 5000, debug: false, allowNoTtl: true })
 
       const startTime = Date.now()
 

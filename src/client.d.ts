@@ -1,6 +1,7 @@
 export interface ClientOptions {
   timeout?: number
   debug?: boolean
+  allowNoTtl?: boolean
 }
 
 export interface Stats {

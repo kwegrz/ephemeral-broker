@@ -10,7 +10,7 @@ describe('Ephemeral Broker', () => {
   before(async () => {
     broker = new Broker({ debug: false })
     pipe = await broker.start()
-    client = new Client(pipe, { debug: false })
+    client = new Client(pipe, { debug: false, allowNoTtl: true })
   })
 
   after(() => {
