@@ -1,69 +1,67 @@
-// ==============================================
-// FILE: ephemeral-broker/test/basic.test.js
-// ==============================================
+import { describe, it, before, after } from 'node:test'
+import assert from 'node:assert'
 import { Broker, Client } from '../src/index.js'
 
-async function test() {
-  console.log('Testing ephemeral-broker...')
-  
-  // Start broker
-  const broker = new Broker({ debug: true })
-  const pipe = await broker.start()
-  console.log(`✓ Broker started on: ${pipe}`)
-  
-  // Create client
-  const client = new Client(pipe, { debug: true })
-  
-  // Test set/get
-  await client.set('foo', 'bar')
-  console.log('✓ Set foo=bar')
-  
-  const value = await client.get('foo')
-  console.assert(value === 'bar', 'Value should be bar')
-  console.log('✓ Got foo=bar')
-  
-  // Test TTL
-  await client.set('temp', 'value', 1000) // 1 second TTL
-  console.log('✓ Set temp with 1s TTL')
-  
-  // Test list
-  const items = await client.list()
-  console.log('✓ List items:', items)
-  
-  // Test delete
-  await client.del('foo')
-  console.log('✓ Deleted foo')
-  
-  try {
-    await client.get('foo')
-    console.error('✗ Should have thrown not_found')
-  } catch (err) {
-    console.log('✓ foo not found after delete')
-  }
-  
-  // Test ping
-  const pong = await client.ping()
-  console.log('✓ Ping successful:', pong)
-  
-  // Wait for TTL to expire
-  console.log('Waiting 1.5s for TTL to expire...')
-  await new Promise(r => setTimeout(r, 1500))
-  
-  try {
-    await client.get('temp')
-    console.error('✗ Should have expired')
-  } catch (err) {
-    console.log('✓ temp expired after TTL')
-  }
-  
-  // Clean up
-  broker.stop()
-  console.log('✓ Broker stopped')
-  
-  console.log('\nAll tests passed! ✨')
-}
+describe('Ephemeral Broker', () => {
+  let broker
+  let client
+  let pipe
 
-test().catch(err => {
-  console.error('Test failed:', err)
-  process.exit(1)
+  before(async () => {
+    broker = new Broker({ debug: false })
+    pipe = await broker.start()
+    client = new Client(pipe, { debug: false })
+  })
+
+  after(() => {
+    broker.stop()
+  })
+
+  it('should start broker and get pipe path', () => {
+    assert.ok(pipe)
+    assert.match(pipe, /broker-.*\.sock|pipe/)
+  })
+
+  it('should set and get values', async () => {
+    await client.set('foo', 'bar')
+    const value = await client.get('foo')
+    assert.strictEqual(value, 'bar')
+  })
+
+  it('should handle TTL expiration', async () => {
+    await client.set('temp', 'value', 100)
+    await new Promise(r => setTimeout(r, 150))
+    await assert.rejects(() => client.get('temp'), /expired|not_found/)
+  })
+
+  it('should list items', async () => {
+    await client.set('key1', 'value1')
+    await client.set('key2', 'value2')
+    const items = await client.list()
+    assert.ok(items)
+    assert.ok(items.key1 || items.key2)
+  })
+
+  it('should delete items', async () => {
+    await client.set('todelete', 'value')
+    await client.del('todelete')
+    await assert.rejects(() => client.get('todelete'), /not_found/)
+  })
+
+  it('should respond to ping', async () => {
+    const pong = await client.ping()
+    assert.ok(typeof pong === 'number')
+    assert.ok(pong > 0)
+  })
+
+  it('should handle JSON values', async () => {
+    const obj = { nested: { data: [1, 2, 3] } }
+    await client.set('json', obj)
+    const result = await client.get('json')
+    assert.deepStrictEqual(result, obj)
+  })
+
+  it('should reject not found keys', async () => {
+    await assert.rejects(() => client.get('nonexistent'), /not_found/)
+  })
 })
