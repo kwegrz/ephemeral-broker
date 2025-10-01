@@ -128,4 +128,9 @@ export class Client {
     const response = await this.request({ action: 'ping' })
     return response.pong
   }
+
+  async stats() {
+    const response = await this.request({ action: 'stats' })
+    return response.stats
+  }
 }

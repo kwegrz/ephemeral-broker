@@ -18,6 +18,7 @@ export class Broker {
     this.server = null
     this.child = null
     this.sweeperInterval = null
+    this.startTime = null
   }
 
   async start() {
@@ -46,6 +47,9 @@ export class Broker {
         if (this.options.debug) {
           console.log(`[broker] Started on: ${this.pipe}`)
         }
+
+        // Record start time for uptime calculation
+        this.startTime = Date.now()
 
         // Export pipe path for child processes
         process.env.EPHEMERAL_PIPE = this.pipe
@@ -142,6 +146,9 @@ export class Broker {
     case 'ping':
       response = { ok: true, pong: Date.now() }
       break
+    case 'stats':
+      response = this.handleStats()
+      break
     default:
       response = { ok: false, error: 'unknown_action' }
     }
@@ -209,6 +216,41 @@ export class Broker {
     }
 
     return { ok: true, items }
+  }
+
+  handleStats() {
+    const now = Date.now()
+    let activeItems = 0
+    let approximateBytes = 0
+
+    // Count non-expired items and approximate storage size
+    for (const [key, item] of this.store.entries()) {
+      if (!item.expires || item.expires > now) {
+        activeItems++
+
+        // Approximate bytes: key + serialized value + metadata overhead
+        approximateBytes += key.length * 2 // UTF-16 char size
+        if (item.value !== undefined) {
+          const serialized = JSON.stringify(item.value)
+          approximateBytes += serialized.length * 2
+        }
+        approximateBytes += 24 // Approximate overhead for Map entry + expires timestamp
+      }
+    }
+
+    return {
+      ok: true,
+      stats: {
+        items: activeItems,
+        leases: 0, // TODO: implement leases in future
+        memory: {
+          rss: process.memoryUsage().rss,
+          heapUsed: process.memoryUsage().heapUsed,
+          approximateStoreBytes: approximateBytes
+        },
+        uptime: this.startTime ? now - this.startTime : 0
+      }
+    }
   }
 
   spawn(command, args = []) {
