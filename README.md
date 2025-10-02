@@ -165,6 +165,112 @@ See [BENCHMARKS.md](./BENCHMARKS.md) for details and how to run benchmarks on yo
 
 ⸻
 
+Alternatives Comparison
+
+### vs Redis
+
+| Feature          | Ephemeral-Broker                              | Redis                                 |
+| ---------------- | --------------------------------------------- | ------------------------------------- |
+| **Setup**        | Zero config, auto-start                       | Install + daemon setup required       |
+| **Transport**    | Unix domain sockets / Named pipes             | TCP (network stack overhead)          |
+| **Performance**  | 12-27k ops/sec (same-host IPC)                | 50-100k ops/sec (TCP)                 |
+| **Ports**        | None (uses pipes)                             | Requires port (default 6379)          |
+| **Security**     | Filesystem permissions (0700) + optional HMAC | Requires auth config + firewall rules |
+| **Persistence**  | None (ephemeral only)                         | Optional (RDB/AOF)                    |
+| **Multi-host**   | ❌ Same-host only                             | ✅ Network accessible                 |
+| **Dependencies** | Zero (Node.js built-ins)                      | Redis server + client library         |
+| **Cleanup**      | Auto on process exit                          | Manual or systemd management          |
+| **Use Case**     | Test coordination, parallel workers           | Production caching, queues, pub/sub   |
+
+**When to use ephemeral-broker:**
+
+- Coordinating parallel test workers (WDIO, Playwright, Jest)
+- Sharing ephemeral secrets without disk writes
+- Zero-setup local development
+- Single-host IPC only
+
+**When to use Redis:**
+
+- Production caching with persistence
+- Multi-host distributed systems
+- Advanced data structures (sorted sets, streams)
+- Pub/sub messaging across services
+
+### vs Filesystem (temp files)
+
+| Feature             | Ephemeral-Broker              | Filesystem                     |
+| ------------------- | ----------------------------- | ------------------------------ |
+| **Speed**           | 12-27k ops/sec (in-memory)    | 100-1000 ops/sec (disk I/O)    |
+| **Security**        | No disk writes                | Secrets written to disk        |
+| **Cleanup**         | Automatic on exit             | Manual cleanup required        |
+| **Atomicity**       | Atomic lease/release          | Requires file locking          |
+| **Concurrency**     | High (parallel clients)       | Limited (file lock contention) |
+| **TTL**             | Built-in automatic expiration | Manual TTL implementation      |
+| **Race Conditions** | No (atomic operations)        | Yes (TOCTOU, stale locks)      |
+| **Crash Recovery**  | Clean (no residue)            | Stale files/locks remain       |
+
+**When to use ephemeral-broker:**
+
+- Sharing secrets that must never touch disk
+- Coordinating parallel workers with leases
+- Atomic operations (counters, flags)
+- Fast in-memory state
+
+**When to use filesystem:**
+
+- Large datasets (>1GB)
+- Persistent state needed across runs
+- Legacy code using file-based config
+- Cross-process sharing without dependencies
+
+### vs SharedArrayBuffer
+
+| Feature            | Ephemeral-Broker                | SharedArrayBuffer                  |
+| ------------------ | ------------------------------- | ---------------------------------- |
+| **Data Types**     | JSON (strings, objects, arrays) | Raw bytes only                     |
+| **Serialization**  | Automatic (JSON)                | Manual (DataView, TypedArrays)     |
+| **Process Model**  | Independent processes           | Threads/workers in same process    |
+| **Cross-Platform** | ✅ Mac, Linux, Windows          | ✅ Browser + Node.js               |
+| **Setup**          | Simple (import + connect)       | Complex (worker setup, Atomics)    |
+| **TTL**            | Built-in                        | Manual implementation              |
+| **Lease/Release**  | Built-in atomic operations      | Manual with Atomics.wait/notify    |
+| **Type Safety**    | Structured data (JSON)          | Byte manipulation only             |
+| **Memory Model**   | Isolated processes              | Shared memory with race conditions |
+
+**When to use ephemeral-broker:**
+
+- Coordinating separate processes (not threads)
+- Structured data (tokens, config objects)
+- Simple API for key/value + leases
+- Cross-process without shared memory complexity
+
+**When to use SharedArrayBuffer:**
+
+- High-frequency updates (>100k ops/sec)
+- Raw binary data (buffers, TypedArrays)
+- Workers in same Node.js process
+- Lock-free algorithms with Atomics
+
+### Summary
+
+**Ephemeral-Broker is optimized for:**
+
+- ✅ Same-host parallel process coordination
+- ✅ Zero-setup ephemeral state (no daemon)
+- ✅ No disk writes (secrets stay in memory)
+- ✅ No ports (uses Unix sockets / Named pipes)
+- ✅ Automatic cleanup on exit
+
+**Not suitable for:**
+
+- ❌ Production caching (use Redis)
+- ❌ Multi-host coordination (use Redis/etcd)
+- ❌ Large datasets >1GB (use filesystem/database)
+- ❌ Ultra-high throughput >100k ops/sec (use SharedArrayBuffer)
+- ❌ Persistent state across runs (use database)
+
+⸻
+
 Troubleshooting
 
 ### Error: `EADDRINUSE` or stale socket
