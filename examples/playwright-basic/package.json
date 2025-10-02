@@ -1,0 +1,14 @@
+{
+  "name": "playwright-basic-example",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright example using ephemeral-broker for parallel test coordination",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "ephemeral-broker": "file:../.."
+  }
+}
