@@ -486,6 +486,25 @@ If you encounter issues not covered here:
 
 ⸻
 
+Security
+
+For detailed security information, see [SECURITY.md](./SECURITY.md).
+
+**Key security features:**
+
+- ✅ Ephemeral state (broker dies → secrets vanish)
+- ✅ No disk writes (memory-only storage)
+- ✅ Random pipe names (generated fresh on every run)
+- ✅ Unix socket permissions (0700, owner-only)
+- ✅ Optional HMAC authentication (timing-safe)
+- ✅ Required TTL (prevents memory leaks)
+- ✅ Size limits (prevents DoS)
+- ✅ Zero external dependencies (supply chain safety)
+
+**Threat model:** Protects against accidental disk persistence, unauthorized local access, memory exhaustion, and stale data leakage. Not designed for multi-host security or root-level attackers.
+
+⸻
+
 Why This Will Succeed 1. Solves real pain — tokens on disk, port conflicts, worker collisions. 2. Simple mental model — just a temp KV/lease store over a pipe. 3. Easy adoption — npx ephemeral-pipe-broker start -- your-command. 4. Framework-agnostic — not tied to WDIO or any specific stack. 5. Safe defaults — LRU, TTL, auth, caps, heartbeat all built-in.
 
 This isn't another heavy service. It's essential infrastructure in ~200 LOC.
