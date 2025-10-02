@@ -165,6 +165,221 @@ See [BENCHMARKS.md](./BENCHMARKS.md) for details and how to run benchmarks on yo
 
 ⸻
 
+Troubleshooting
+
+### Error: `EADDRINUSE` or stale socket
+
+**Symptom**: Broker fails to start with `Error: listen EADDRINUSE`
+
+**Cause**: A previous broker process crashed and left a socket file in `/tmp/` (Unix) or a named pipe handle (Windows).
+
+**Solution**:
+
+```bash
+# Unix/Mac: Remove stale socket files
+rm -f /tmp/broker-*.sock
+
+# Windows: Named pipes clean up automatically, but check for hung processes
+tasklist | findstr node
+taskkill /F /PID <process_id>
+```
+
+The broker automatically detects and removes stale sockets on Unix systems (see `broker.js:24-38`), but if you see this error, manually clean up the socket files.
+
+### Error: `EPERM` (Windows)
+
+**Symptom**: Permission denied when creating or connecting to named pipes on Windows
+
+**Cause**: Windows named pipes require consistent elevation context. If the broker runs elevated (admin) but the client doesn't, or vice versa, connections will fail.
+
+**Solution**:
+
+1. Run both broker and clients in the same elevation context (both elevated or both normal)
+2. In CI/CD, ensure all processes run with the same permissions
+3. Avoid `runas` or `sudo` for individual commands - elevate the entire terminal session
+
+### Error: Timeouts / `ECONNREFUSED`
+
+**Symptom**: Client times out or gets "connection refused" errors
+
+**Cause**:
+
+- Broker not started before client connects
+- `EPHEMERAL_PIPE` environment variable not set or incorrect
+- Broker crashed silently
+
+**Solutions**:
+
+```javascript
+// 1. Verify EPHEMERAL_PIPE is set
+console.log('Pipe:', process.env.EPHEMERAL_PIPE)
+// Should output: /tmp/broker-xxxxx.sock (Unix) or \\.\pipe\broker-xxxxx (Windows)
+
+// 2. Increase client timeout (default: 5000ms)
+const client = new Client(pipe, { timeout: 10000 })
+
+// 3. Check broker is running
+await client.ping() // Should return number (latency in ms)
+
+// 4. Enable debug mode to see connection attempts
+const broker = new Broker({ debug: true })
+const client = new Client(pipe, { debug: true })
+```
+
+**Common causes:**
+
+- Test framework started before `globalSetup` completed
+- Broker stopped too early (before all workers finished)
+- Using wrong pipe path (hardcoded instead of `process.env.EPHEMERAL_PIPE`)
+
+### Memory Usage Climbing
+
+**Symptom**: Broker memory usage grows continuously, eventually hitting limits
+
+**Cause**:
+
+- TTL not set on keys (data never expires)
+- Too many unique keys being created
+- Large values being stored (exceeds intended use case)
+
+**Solutions**:
+
+```javascript
+// 1. Always set TTL (broker enforces this by default)
+await client.set('key', 'value', 60000) // 60 second TTL
+
+// 2. Monitor memory with stats endpoint
+const stats = await client.stats()
+console.log('Items:', stats.items)
+console.log('Memory:', stats.memory.heapUsed)
+
+// 3. Reduce maxItems limit to prevent unbounded growth
+const broker = new Broker({ maxItems: 1000 }) // Default: 10,000
+
+// 4. Reduce sweeper interval to clean up expired items faster
+const broker = new Broker({ sweeperInterval: 10000 }) // 10s (default: 30s)
+
+// 5. Set smaller TTLs for temporary data
+await client.set('temp-data', value, 5000) // 5 seconds
+```
+
+### Error: `too_large`
+
+**Symptom**: Client gets `too_large` error when setting values
+
+**Cause**: Value or request exceeds size limits
+
+**Solution**:
+
+```javascript
+// Default limits:
+// - maxRequestSize: 1 MB
+// - maxValueSize: 256 KB
+
+// Increase limits if needed (not recommended for ephemeral data)
+const broker = new Broker({
+  maxRequestSize: 5 * 1024 * 1024, // 5 MB
+  maxValueSize: 1 * 1024 * 1024 // 1 MB
+})
+
+// Or: Split large data into smaller chunks
+const chunks = splitIntoChunks(largeData, 200 * 1024) // 200 KB chunks
+for (let i = 0; i < chunks.length; i++) {
+  await client.set(`data-chunk-${i}`, chunks[i])
+}
+```
+
+**Note**: Ephemeral-broker is designed for small, temporary data (tokens, session IDs, config flags). For large datasets, use Redis or filesystem storage.
+
+### Workers Can't Connect in Parallel Tests
+
+**Symptom**: Some workers connect successfully, others timeout or fail
+
+**Cause**:
+
+- Race condition: workers start before broker exports `EPHEMERAL_PIPE`
+- Workers inherit different environment variables
+
+**Solution**:
+
+```javascript
+// 1. Use framework-specific global setup hooks
+// Playwright
+export default defineConfig({
+  globalSetup: async () => {
+    const broker = new Broker()
+    await broker.start() // Exports EPHEMERAL_PIPE to all workers
+    return async () => broker.stop()
+  }
+})
+
+// Jest
+export default async function globalSetup() {
+  const broker = new Broker()
+  await broker.start()
+  global.__BROKER__ = broker
+}
+
+// WebdriverIO
+export const config = {
+  async onPrepare() {
+    broker = new Broker()
+    await broker.start()
+  }
+}
+
+// 2. Add retry logic in workers
+let client
+for (let i = 0; i < 5; i++) {
+  try {
+    client = new Client(process.env.EPHEMERAL_PIPE)
+    await client.ping()
+    break
+  } catch (err) {
+    if (i === 4) throw err
+    await new Promise(resolve => setTimeout(resolve, 100 * (i + 1)))
+  }
+}
+```
+
+### HMAC Authentication Failures
+
+**Symptom**: Client gets `auth_failed` error
+
+**Cause**: Client and broker using different secrets, or secret not set
+
+**Solution**:
+
+```javascript
+// 1. Ensure same secret on both sides
+const secret = process.env.EPHEMERAL_SECRET || 'my-test-secret'
+const broker = new Broker({ secret })
+const client = new Client(pipe, { secret })
+
+// 2. Or disable auth for local testing
+const broker = new Broker() // No secret = no auth
+const client = new Client(pipe) // No secret = no auth
+
+// 3. In CI/CD, set EPHEMERAL_SECRET as environment variable
+// GitHub Actions:
+// env:
+//   EPHEMERAL_SECRET: ${{ secrets.EPHEMERAL_SECRET }}
+```
+
+**Security note**: Always use HMAC authentication in CI/CD environments. Only disable for local development.
+
+### Getting Help
+
+If you encounter issues not covered here:
+
+1. Enable debug mode: `{ debug: true }` on both broker and client
+2. Check `EPHEMERAL_PIPE` value: `echo $EPHEMERAL_PIPE`
+3. Verify broker is running: `await client.ping()`
+4. Check broker stats: `await client.stats()`
+5. Open an issue at: https://github.com/kwegrz/ephemeral-broker/issues
+
+⸻
+
 Why This Will Succeed 1. Solves real pain — tokens on disk, port conflicts, worker collisions. 2. Simple mental model — just a temp KV/lease store over a pipe. 3. Easy adoption — npx ephemeral-pipe-broker start -- your-command. 4. Framework-agnostic — not tied to WDIO or any specific stack. 5. Safe defaults — LRU, TTL, auth, caps, heartbeat all built-in.
 
 This isn't another heavy service. It's essential infrastructure in ~200 LOC.
