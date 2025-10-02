@@ -3,6 +3,8 @@
 Fast, secure, ephemeral IPC over pipes.
 Share secrets, tokens, and small state between parallel processes without touching disk or opening ports. Cleans itself up automatically when your process exits.
 
+**Production-ready for same-host use.** Designed for test coordination, parallel workers, and ephemeral secret distribution.
+
 ⸻
 
 ## Core Value Props
@@ -10,7 +12,7 @@ Share secrets, tokens, and small state between parallel processes without touchi
 1. **One Thing Well** — A temporary KV/lease store over pipes. That's it.
 2. **Zero Dependencies** — Core uses only Node built-ins.
 3. **Security First** — HMAC auth, size limits, TTL required by default.
-4. **Plugin Architecture** — Extend without bloating core.
+4. **Production-Ready** — Bounded memory, metrics, health checks, graceful shutdown.
 5. **Cross-Platform** — Works the same on Mac, Linux, and Windows.
 
 ⸻
@@ -86,6 +88,98 @@ export const config = withBrokerTokens(
   baseConfig
 )
 ```
+
+⸻
+
+## Production Use
+
+### Same-Host Only
+
+Ephemeral Broker is **production-ready for same-host, same-pod coordination**:
+
+✅ **Use in production for:**
+
+- Parallel test worker coordination (WDIO, Playwright, Jest)
+- Ephemeral secret distribution (API tokens, STS credentials)
+- Short-lived locks and rendezvous (< 10 minutes)
+- In-process state sharing between parent and child processes
+
+❌ **Not suitable for:**
+
+- Cross-host or cross-pod coordination → Use Redis/etcd
+- Long-term persistent storage → Use Redis/database
+- Large datasets (>1GB) → Use Redis/filesystem
+- Mission-critical data that must survive crashes → Use Redis/database
+
+### Configuration
+
+Broker options can be set via constructor or environment variables:
+
+```javascript
+const broker = new Broker({
+  defaultTTL: 600000, // BROKER_DEFAULT_TTL (10 minutes)
+  maxItems: 10000, // BROKER_MAX_ITEMS
+  maxValueSize: 262144, // BROKER_MAX_VALUE_SIZE (256KB)
+  maxRequestSize: 1048576, // BROKER_MAX_REQUEST_SIZE (1MB)
+  sweeperInterval: 30000, // BROKER_SWEEP_INTERVAL (30s)
+  requireTTL: true, // Enforce TTL on all keys
+  debug: false // BROKER_DEBUG
+})
+```
+
+### Kubernetes Deployment
+
+Run as an **in-process library** (not a sidecar):
+
+```javascript
+// app.js
+import { Broker, Client } from '@ephemeral-broker/core'
+
+const broker = new Broker({ debug: true })
+await broker.start()
+
+// Your app uses process.env.EPHEMERAL_PIPE
+// Workers inherit the pipe path automatically
+```
+
+**Readiness probe** (exec):
+
+```yaml
+readinessProbe:
+  exec:
+    command:
+      ['node', '-e', 'require("@ephemeral-broker/core").Client(process.env.EPHEMERAL_PIPE).ping()']
+  initialDelaySeconds: 2
+  periodSeconds: 5
+```
+
+**Resource limits:**
+
+```yaml
+resources:
+  limits:
+    memory: '512Mi' # Broker uses ~1.5KB per item
+  requests:
+    memory: '256Mi'
+```
+
+### Monitoring
+
+Expose metrics for alerting:
+
+```javascript
+const stats = await client.stats()
+// { items: 42, leases: 3, memory: {...}, uptime: 12345 }
+
+const metrics = await client.metrics()
+// Prometheus format
+```
+
+**Recommended alerts:**
+
+- `broker_items / max_items > 0.9` - Near capacity
+- `broker_sweeps_total` stalled for >60s - Sweeper unhealthy
+- `broker_rejects_total` increasing - Hit limits
 
 ⸻
 
