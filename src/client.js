@@ -1,5 +1,6 @@
 import net from 'node:net'
 import crypto from 'node:crypto'
+import zlib from 'node:zlib'
 
 export class Client {
   constructor(pipe, options = {}) {
@@ -14,6 +15,8 @@ export class Client {
       debug: options.debug || false,
       allowNoTtl: options.allowNoTtl || false,
       secret: options.secret || process.env.EPHEMERAL_SECRET || null,
+      compression: options.compression !== undefined ? options.compression : true,
+      compressionThreshold: options.compressionThreshold || 1024,
       ...options
     }
   }
@@ -121,8 +124,45 @@ export class Client {
     return { ...payload, hmac }
   }
 
+  async compressValue(value) {
+    return new Promise((resolve, reject) => {
+      const serialized = JSON.stringify(value)
+      const buffer = Buffer.from(serialized, 'utf8')
+
+      zlib.gzip(buffer, (err, compressed) => {
+        if (err) return reject(err)
+        resolve(compressed.toString('base64'))
+      })
+    })
+  }
+
+  async decompressValue(compressed) {
+    return new Promise((resolve, reject) => {
+      const buffer = Buffer.from(compressed, 'base64')
+
+      zlib.gunzip(buffer, (err, decompressed) => {
+        if (err) return reject(err)
+        const serialized = decompressed.toString('utf8')
+        resolve(JSON.parse(serialized))
+      })
+    })
+  }
+
+  shouldCompress(value) {
+    if (!this.options.compression) return false
+
+    const serialized = JSON.stringify(value)
+    return serialized.length >= this.options.compressionThreshold
+  }
+
   async get(key) {
     const response = await this.request({ action: 'get', key })
+
+    // Decompress if needed
+    if (response.compressed) {
+      return await this.decompressValue(response.value)
+    }
+
     return response.value
   }
 
@@ -134,7 +174,17 @@ export class Client {
       )
     }
 
-    await this.request({ action: 'set', key, value, ttl })
+    // Check if we should compress
+    const shouldCompress = this.shouldCompress(value)
+    let finalValue = value
+    let compressed = false
+
+    if (shouldCompress) {
+      finalValue = await this.compressValue(value)
+      compressed = true
+    }
+
+    await this.request({ action: 'set', key, value: finalValue, ttl, compressed })
     return true
   }
 
@@ -156,6 +206,11 @@ export class Client {
   async stats() {
     const response = await this.request({ action: 'stats' })
     return response.stats
+  }
+
+  async health() {
+    const response = await this.request({ action: 'health' })
+    return response
   }
 
   async lease(key, workerId, ttl) {

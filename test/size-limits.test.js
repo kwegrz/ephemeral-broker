@@ -11,12 +11,13 @@ async function testSizeLimits() {
     pipeId: testPipeId1,
     maxValueSize: 256_000, // 256KB
     debug: true,
-    requireTTL: false
+    requireTTL: false,
+    compression: false // Disable compression to test raw size limits
   })
 
   try {
     const pipePath = await broker1.start()
-    const client = new Client(pipePath, { debug: true, allowNoTtl: true })
+    const client = new Client(pipePath, { debug: true, allowNoTtl: true, compression: false })
 
     // Create a 300KB string
     const bigValue = 'x'.repeat(300_000)
@@ -64,12 +65,13 @@ async function testSizeLimits() {
     maxRequestSize: 10_000, // 10KB
     maxValueSize: 100_000, // 100KB
     debug: true,
-    requireTTL: false
+    requireTTL: false,
+    compression: false // Disable compression to test raw request size limits
   })
 
   try {
     const pipePath = await broker2.start()
-    const client = new Client(pipePath, { debug: true, allowNoTtl: true })
+    const client = new Client(pipePath, { debug: true, allowNoTtl: true, compression: false })
 
     // Create a request that's too large (15KB)
     const hugeValue = 'y'.repeat(15_000)
@@ -100,11 +102,16 @@ async function testSizeLimits() {
   // Test 3: Default limits
   console.log('\nTest 3: Default limits')
   const testPipeId3 = 'test-defaults-' + Date.now()
-  const broker3 = new Broker({ pipeId: testPipeId3, debug: false, requireTTL: false })
+  const broker3 = new Broker({
+    pipeId: testPipeId3,
+    debug: false,
+    requireTTL: false,
+    compression: false
+  })
 
   try {
     const pipePath = await broker3.start()
-    const client = new Client(pipePath, { allowNoTtl: true })
+    const client = new Client(pipePath, { allowNoTtl: true, compression: false })
 
     // Default maxValueSize is 256KB
     const value256KB = 'z'.repeat(256 * 1024)
@@ -142,12 +149,13 @@ async function testSizeLimits() {
     pipeId: testPipeId4,
     maxValueSize: 1000, // 1KB
     debug: false,
-    requireTTL: false
+    requireTTL: false,
+    compression: false
   })
 
   try {
     const pipePath = await broker4.start()
-    const client = new Client(pipePath, { allowNoTtl: true })
+    const client = new Client(pipePath, { allowNoTtl: true, compression: false })
 
     // Create an object that serializes to more than 1KB
     const bigObject = {

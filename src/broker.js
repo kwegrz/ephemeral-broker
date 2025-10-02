@@ -1,8 +1,10 @@
 import net from 'node:net'
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import zlib from 'node:zlib'
 import { spawn } from 'node:child_process'
 import { makePipePath, cleanupPipe } from './pipe-utils.js'
+import { Logger } from './logger.js'
 
 export class Broker {
   constructor(options = {}) {
@@ -14,8 +16,21 @@ export class Broker {
       maxItems: options.maxItems !== undefined ? options.maxItems : 10000,
       secret: options.secret || null, // Optional HMAC secret
       requireTTL: options.requireTTL !== undefined ? options.requireTTL : true, // Require TTL by default
+      idleTimeout: options.idleTimeout || null, // Idle timeout in ms (disabled by default)
+      heartbeatInterval: options.heartbeatInterval || null, // Heartbeat interval in ms (disabled by default)
+      logLevel: options.logLevel || (options.debug ? 'debug' : 'info'), // Log level (debug, info, warn, error)
+      structuredLogging: options.structuredLogging || false, // JSON structured logs
+      compression: options.compression !== undefined ? options.compression : true, // Enable compression by default
+      compressionThreshold: options.compressionThreshold || 1024, // Compress values larger than 1KB
       ...options
     }
+
+    // Initialize logger
+    this.logger = new Logger({
+      level: this.options.logLevel,
+      structured: this.options.structuredLogging,
+      component: 'broker'
+    })
 
     this.pipe = makePipePath(options.pipeId)
     this.store = new Map()
@@ -23,10 +38,14 @@ export class Broker {
     this.server = null
     this.child = null
     this.sweeperInterval = null
+    this.idleCheckInterval = null
+    this.heartbeatInterval = null
     this.startTime = null
+    this.lastActivity = null
     this.signalHandlers = new Map()
     this.draining = false
     this.inFlightRequests = 0
+    this.requestCounter = 0 // For generating correlation IDs
   }
 
   async start() {
@@ -39,9 +58,7 @@ export class Broker {
         throw new Error('Broker already running')
       } else {
         // Socket file exists but broker isn't running - it's stale
-        if (this.options.debug) {
-          console.log(`[broker] Removing stale socket: ${this.pipe}`)
-        }
+        this.logger.debug('Removing stale socket', { pipe: this.pipe })
         fs.unlinkSync(this.pipe)
       }
     }
@@ -52,18 +69,27 @@ export class Broker {
       this.server.once('error', reject)
 
       this.server.listen(this.pipe, () => {
-        if (this.options.debug) {
-          console.log(`[broker] Started on: ${this.pipe}`)
-        }
+        this.logger.info('Broker started', { pipe: this.pipe })
 
         // Record start time for uptime calculation
         this.startTime = Date.now()
+        this.lastActivity = Date.now()
 
         // Export pipe path for child processes
         process.env.EPHEMERAL_PIPE = this.pipe
 
         // Start TTL sweeper - runs every 30 seconds
         this.startSweeper()
+
+        // Start idle checker if idleTimeout is configured
+        if (this.options.idleTimeout) {
+          this.startIdleChecker()
+        }
+
+        // Start heartbeat if heartbeatInterval is configured
+        if (this.options.heartbeatInterval) {
+          this.startHeartbeat()
+        }
 
         // Set up graceful shutdown handlers
         this.setupSignalHandlers()
@@ -78,9 +104,7 @@ export class Broker {
 
     for (const signal of signals) {
       const handler = async () => {
-        if (this.options.debug) {
-          console.log(`[broker] Received ${signal}, shutting down gracefully...`)
-        }
+        this.logger.info('Received shutdown signal', { signal })
         await this.drain()
         this.stop()
         process.exit(0)
@@ -98,26 +122,22 @@ export class Broker {
 
     this.draining = true
 
-    if (this.options.debug) {
-      console.log(`[broker] Draining... ${this.inFlightRequests} requests in-flight`)
-    }
+    this.logger.info('Draining connections', { inFlight: this.inFlightRequests })
 
     const startTime = Date.now()
 
     // Wait for in-flight requests to complete or timeout
     while (this.inFlightRequests > 0) {
       if (Date.now() - startTime > timeout) {
-        if (this.options.debug) {
-          console.log(`[broker] Drain timeout - ${this.inFlightRequests} requests still in-flight`)
-        }
+        this.logger.warn('Drain timeout exceeded', { inFlight: this.inFlightRequests, timeout })
         break
       }
       // Wait 10ms before checking again
       await new Promise(resolve => setTimeout(resolve, 10))
     }
 
-    if (this.options.debug && this.inFlightRequests === 0) {
-      console.log('[broker] Drain complete - all requests finished')
+    if (this.inFlightRequests === 0) {
+      this.logger.info('Drain complete')
     }
   }
 
@@ -176,15 +196,16 @@ export class Broker {
     })
 
     socket.on('error', err => {
-      if (this.options.debug) {
-        console.log(`[broker] Socket error: ${err.message}`)
-      }
+      this.logger.debug('Socket error', { error: err.message })
     })
   }
 
   async processMessage(line, socket) {
     // Track in-flight request
     this.inFlightRequests++
+
+    // Update last activity timestamp
+    this.lastActivity = Date.now()
 
     let msg
     try {
@@ -205,9 +226,10 @@ export class Broker {
       }
     }
 
-    if (this.options.debug) {
-      console.log(`[broker] Request: ${msg.action}`)
-    }
+    // Generate correlation ID for request tracking
+    const correlationId = `${Date.now()}-${++this.requestCounter}`
+
+    this.logger.debug('Processing request', { action: msg.action, correlationId })
 
     let response
     switch (msg.action) {
@@ -215,7 +237,7 @@ export class Broker {
       response = this.handleGet(msg)
       break
     case 'set':
-      response = this.handleSet(msg)
+      response = await this.handleSet(msg)
       break
     case 'del':
       response = this.handleDel(msg)
@@ -228,6 +250,9 @@ export class Broker {
       break
     case 'stats':
       response = this.handleStats()
+      break
+    case 'health':
+      response = this.handleHealth()
       break
     case 'lease':
       response = this.handleLease(msg)
@@ -268,6 +293,30 @@ export class Broker {
     return crypto.timingSafeEqual(Buffer.from(clientHMAC, 'hex'), Buffer.from(expectedHMAC, 'hex'))
   }
 
+  async compressValue(value) {
+    return new Promise((resolve, reject) => {
+      const serialized = JSON.stringify(value)
+      const buffer = Buffer.from(serialized, 'utf8')
+
+      zlib.gzip(buffer, (err, compressed) => {
+        if (err) return reject(err)
+        resolve(compressed.toString('base64'))
+      })
+    })
+  }
+
+  async decompressValue(compressed) {
+    return new Promise((resolve, reject) => {
+      const buffer = Buffer.from(compressed, 'base64')
+
+      zlib.gunzip(buffer, (err, decompressed) => {
+        if (err) return reject(err)
+        const serialized = decompressed.toString('utf8')
+        resolve(JSON.parse(serialized))
+      })
+    })
+  }
+
   handleGet({ key }) {
     const item = this.store.get(key)
 
@@ -281,10 +330,10 @@ export class Broker {
       return { ok: false, error: 'expired' }
     }
 
-    return { ok: true, value: item.value }
+    return { ok: true, value: item.value, compressed: item.compressed }
   }
 
-  handleSet({ key, value, ttl }) {
+  async handleSet({ key, value, ttl, compressed }) {
     // Validate TTL if requireTTL is enabled
     if (this.options.requireTTL) {
       if (ttl === undefined || ttl === null) {
@@ -326,11 +375,14 @@ export class Broker {
 
     const expires = ttl ? Date.now() + ttl : Date.now() + this.options.defaultTTL
 
-    this.store.set(key, { value, expires })
+    // Store with compression flag
+    this.store.set(key, { value, expires, compressed: compressed || false })
 
-    if (this.options.debug) {
-      console.log(`[broker] Set ${key} with TTL ${ttl || this.options.defaultTTL}ms`)
-    }
+    this.logger.debug('Key set', {
+      key,
+      ttl: ttl || this.options.defaultTTL,
+      compressed: compressed || false
+    })
 
     return { ok: true }
   }
@@ -402,11 +454,12 @@ export class Broker {
 
     this.leases.set(workerId, { key, value, expires })
 
-    if (this.options.debug) {
-      console.log(
-        `[broker] Leased ${key}=${value} to worker ${workerId} with TTL ${ttl || this.options.defaultTTL}ms`
-      )
-    }
+    this.logger.debug('Lease granted', {
+      key,
+      value,
+      workerId,
+      ttl: ttl || this.options.defaultTTL
+    })
 
     return { ok: true, value }
   }
@@ -418,11 +471,32 @@ export class Broker {
 
     const existed = this.leases.delete(workerId)
 
-    if (this.options.debug && existed) {
-      console.log(`[broker] Released lease for worker ${workerId}`)
+    if (existed) {
+      this.logger.debug('Lease released', { workerId })
     }
 
     return { ok: true, released: existed }
+  }
+
+  handleHealth() {
+    const now = Date.now()
+    const mem = process.memoryUsage()
+
+    return {
+      ok: true,
+      status: 'healthy',
+      uptime: this.startTime ? now - this.startTime : 0,
+      timestamp: now,
+      memory: {
+        rss: mem.rss,
+        heapUsed: mem.heapUsed,
+        heapTotal: mem.heapTotal
+      },
+      connections: {
+        inFlight: this.inFlightRequests,
+        draining: this.draining
+      }
+    }
   }
 
   handleStats() {
@@ -479,9 +553,7 @@ export class Broker {
     })
 
     this.child.on('exit', code => {
-      if (this.options.debug) {
-        console.log(`[broker] Child exited with code ${code}`)
-      }
+      this.logger.info('Child process exited', { code })
       this.stop()
       process.exit(code || 0)
     })
@@ -510,6 +582,58 @@ export class Broker {
     this.sweeperInterval.unref()
   }
 
+  startIdleChecker() {
+    // Check every 10 seconds for idle timeout
+    this.idleCheckInterval = setInterval(() => {
+      this.checkIdleTimeout()
+    }, 10000)
+
+    // Don't let the interval keep the process alive
+    this.idleCheckInterval.unref()
+  }
+
+  startHeartbeat() {
+    // Log heartbeat at configured interval
+    this.heartbeatInterval = setInterval(() => {
+      this.logHeartbeat()
+    }, this.options.heartbeatInterval)
+
+    // Don't let the interval keep the process alive
+    this.heartbeatInterval.unref()
+  }
+
+  logHeartbeat() {
+    const health = this.handleHealth()
+    this.logger.info('Heartbeat', {
+      uptimeSeconds: Math.floor(health.uptime / 1000),
+      memoryMB: Math.floor(health.memory.heapUsed / 1024 / 1024),
+      inFlight: health.connections.inFlight
+    })
+  }
+
+  checkIdleTimeout() {
+    if (!this.options.idleTimeout || !this.lastActivity) {
+      return
+    }
+
+    const now = Date.now()
+    const idleTime = now - this.lastActivity
+
+    if (idleTime >= this.options.idleTimeout) {
+      this.logger.info('Idle timeout exceeded, shutting down', {
+        idleTime,
+        timeout: this.options.idleTimeout
+      })
+      this.shutdownDueToIdle()
+    }
+  }
+
+  async shutdownDueToIdle() {
+    await this.drain()
+    this.stop()
+    process.exit(0)
+  }
+
   sweepExpired() {
     const now = Date.now()
     let sweptItems = 0
@@ -531,8 +655,8 @@ export class Broker {
       }
     }
 
-    if ((sweptItems > 0 || sweptLeases > 0) && this.options.debug) {
-      console.log(`[broker] Swept ${sweptItems} expired items, ${sweptLeases} expired leases`)
+    if (sweptItems > 0 || sweptLeases > 0) {
+      this.logger.debug('Swept expired entries', { items: sweptItems, leases: sweptLeases })
     }
   }
 
@@ -549,6 +673,18 @@ export class Broker {
       this.sweeperInterval = null
     }
 
+    // Clear idle check interval
+    if (this.idleCheckInterval) {
+      clearInterval(this.idleCheckInterval)
+      this.idleCheckInterval = null
+    }
+
+    // Clear heartbeat interval
+    if (this.heartbeatInterval) {
+      clearInterval(this.heartbeatInterval)
+      this.heartbeatInterval = null
+    }
+
     if (this.server) {
       this.server.close()
       this.server = null
@@ -557,8 +693,6 @@ export class Broker {
     cleanupPipe(this.pipe)
     this.store.clear()
 
-    if (this.options.debug) {
-      console.log('[broker] Stopped and cleaned up')
-    }
+    this.logger.info('Broker stopped and cleaned up')
   }
 }
