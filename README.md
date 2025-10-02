@@ -1,4 +1,4 @@
-Ephemeral Pipe Broker
+# Ephemeral Broker
 
 Fast, secure, ephemeral IPC over pipes.
 Share secrets, tokens, and small state between parallel processes without touching disk or opening ports. Cleans itself up automatically when your process exits.
@@ -23,7 +23,7 @@ Most modern dev/test environments run into the same problems:
 - **Parallel worker collisions** → WDIO, Playwright, Jest, etc. spawn many workers with no safe way to share ephemeral state.
 - **Lifecycle pollution** → bootstrap state lingers after jobs, causing flaky tests and security risks.
 
-Ephemeral Pipe Broker solves this:
+Ephemeral Broker solves this:
 
 - Starts before your process.
 - Exposes a random local pipe (`/tmp/…sock` or `\\.\pipe\…`).
