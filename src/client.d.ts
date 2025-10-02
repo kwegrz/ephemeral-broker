@@ -60,6 +60,7 @@ export class Client {
   ping(): Promise<number>
   stats(): Promise<Stats>
   health(): Promise<Health>
+  metrics(): Promise<string>
   lease(key: string, workerId: string, ttl?: number): Promise<number>
   release(workerId: string): Promise<boolean>
 }

@@ -16,6 +16,7 @@ export interface BrokerOptions {
   structuredLogging?: boolean
   compression?: boolean
   compressionThreshold?: number
+  metrics?: boolean
 }
 
 export interface BrokerStats {
@@ -49,6 +50,7 @@ export class Broker {
   options: Required<Omit<BrokerOptions, 'pipeId'>> & { pipeId?: string }
   pipe: string
   logger: import('./logger.js').Logger
+  metrics: import('./metrics.js').Metrics
   store: Map<string, { value: any; expires: number }>
   leases: Map<string, { key: string; value: number; expires: number }>
   server: Server | null
@@ -75,10 +77,11 @@ export class Broker {
   compressValue(value: any): Promise<string>
   decompressValue(compressed: string): Promise<any>
   handleGet(msg: { key: string }): { ok: boolean; value?: any; compressed?: boolean; error?: string }
-  handleSet(msg: { key: string; value: any; ttl?: number; compressed?: boolean }): Promise<{ ok: boolean; error?: string }>
+  handleSet(msg: { key: string; value: any; ttl?: number; compressed?: boolean; beforeSize?: number; afterSize?: number }): Promise<{ ok: boolean; error?: string }>
   handleDel(msg: { key: string }): { ok: boolean }
   handleList(): { ok: boolean; items: Record<string, { expires: number; hasValue: boolean }> }
   handleHealth(): BrokerHealth
+  handleMetrics(): { ok: boolean; metrics: string; format: string }
   handleLease(msg: { key: string; workerId: string; ttl?: number }): { ok: boolean; value?: number; error?: string }
   handleRelease(msg: { workerId: string }): { ok: boolean; released?: boolean; error?: string }
   handleStats(): { ok: boolean; stats: BrokerStats }

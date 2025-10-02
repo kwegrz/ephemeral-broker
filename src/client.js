@@ -178,13 +178,26 @@ export class Client {
     const shouldCompress = this.shouldCompress(value)
     let finalValue = value
     let compressed = false
+    let beforeSize = 0
+    let afterSize = 0
 
     if (shouldCompress) {
+      const serialized = JSON.stringify(value)
+      beforeSize = serialized.length
       finalValue = await this.compressValue(value)
+      afterSize = finalValue.length
       compressed = true
     }
 
-    await this.request({ action: 'set', key, value: finalValue, ttl, compressed })
+    await this.request({
+      action: 'set',
+      key,
+      value: finalValue,
+      ttl,
+      compressed,
+      beforeSize,
+      afterSize
+    })
     return true
   }
 
@@ -211,6 +224,11 @@ export class Client {
   async health() {
     const response = await this.request({ action: 'health' })
     return response
+  }
+
+  async metrics() {
+    const response = await this.request({ action: 'metrics' })
+    return response.metrics
   }
 
   async lease(key, workerId, ttl) {

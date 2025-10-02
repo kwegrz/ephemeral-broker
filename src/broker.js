@@ -5,6 +5,7 @@ import zlib from 'node:zlib'
 import { spawn } from 'node:child_process'
 import { makePipePath, cleanupPipe } from './pipe-utils.js'
 import { Logger } from './logger.js'
+import { Metrics } from './metrics.js'
 
 export class Broker {
   constructor(options = {}) {
@@ -30,6 +31,11 @@ export class Broker {
       level: this.options.logLevel,
       structured: this.options.structuredLogging,
       component: 'broker'
+    })
+
+    // Initialize metrics
+    this.metrics = new Metrics({
+      enabled: this.options.metrics !== undefined ? this.options.metrics : true
     })
 
     this.pipe = makePipePath(options.pipeId)
@@ -231,34 +237,49 @@ export class Broker {
 
     this.logger.debug('Processing request', { action: msg.action, correlationId })
 
+    // Record request metrics
+    this.metrics.recordRequest(this.inFlightRequests, this.draining)
+
     let response
     switch (msg.action) {
     case 'get':
       response = this.handleGet(msg)
+      this.metrics.recordOperation('get', response.ok)
       break
     case 'set':
       response = await this.handleSet(msg)
+      this.metrics.recordOperation('set', response.ok)
       break
     case 'del':
       response = this.handleDel(msg)
+      this.metrics.recordOperation('del', response.ok)
       break
     case 'list':
       response = this.handleList()
+      this.metrics.recordOperation('list', response.ok)
       break
     case 'ping':
       response = { ok: true, pong: Date.now() }
+      this.metrics.recordOperation('ping', response.ok)
       break
     case 'stats':
       response = this.handleStats()
+      this.metrics.recordOperation('stats', response.ok)
       break
     case 'health':
       response = this.handleHealth()
+      this.metrics.recordOperation('health', response.ok)
+      break
+    case 'metrics':
+      response = this.handleMetrics()
       break
     case 'lease':
       response = this.handleLease(msg)
+      this.metrics.recordOperation('lease', response.ok)
       break
     case 'release':
       response = this.handleRelease(msg)
+      this.metrics.recordOperation('release', response.ok)
       break
     default:
       response = { ok: false, error: 'unknown_action' }
@@ -333,7 +354,7 @@ export class Broker {
     return { ok: true, value: item.value, compressed: item.compressed }
   }
 
-  async handleSet({ key, value, ttl, compressed }) {
+  async handleSet({ key, value, ttl, compressed, beforeSize, afterSize }) {
     // Validate TTL if requireTTL is enabled
     if (this.options.requireTTL) {
       if (ttl === undefined || ttl === null) {
@@ -371,6 +392,13 @@ export class Broker {
       if (activeCount >= this.options.maxItems) {
         return { ok: false, error: 'max_items' }
       }
+    }
+
+    // Record compression metrics
+    if (compressed && beforeSize && afterSize) {
+      this.metrics.recordCompression(beforeSize, afterSize)
+    } else if (!compressed) {
+      this.metrics.recordUncompressed()
     }
 
     const expires = ttl ? Date.now() + ttl : Date.now() + this.options.defaultTTL
@@ -496,6 +524,14 @@ export class Broker {
         inFlight: this.inFlightRequests,
         draining: this.draining
       }
+    }
+  }
+
+  handleMetrics() {
+    return {
+      ok: true,
+      metrics: this.metrics.toPrometheusFormat(),
+      format: 'prometheus'
     }
   }
 
@@ -657,6 +693,7 @@ export class Broker {
 
     if (sweptItems > 0 || sweptLeases > 0) {
       this.logger.debug('Swept expired entries', { items: sweptItems, leases: sweptLeases })
+      this.metrics.recordExpired(sweptItems, sweptLeases)
     }
   }
 
