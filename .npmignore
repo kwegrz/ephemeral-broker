@@ -1,0 +1,32 @@
+# Test files
+test/
+*.test.js
+test-*.js
+
+# Coverage
+coverage/
+.nyc_output/
+.c8/
+
+# Development
+.husky/
+.eslintrc.*
+.prettierrc.*
+.prettierignore
+.editorconfig
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# Misc
+*.log
+node_modules/
+.DS_Store
+Thumbs.db

@@ -41,7 +41,9 @@
     "README.md",
     "LICENSE",
     "ARCHITECTURE.md",
-    "SECURITY.md"
+    "SECURITY.md",
+    "SECURITY_CHECKLIST.md",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {

@@ -44,3 +44,53 @@ jobs:
         with:
           files: ./coverage/lcov.info
           fail_ci_if_error: false
+
+  security:
+    name: Security Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+
+  package:
+    name: Package Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create package
+        run: npm pack
+
+      - name: Verify package contents
+        run: |
+          tar -tzf *.tgz | tee package-contents.txt
+          echo "Checking for test files..."
+          if tar -tzf *.tgz | grep -E "test/|\.test\.js"; then
+            echo "ERROR: Test files found in package!"
+            exit 1
+          fi
+          echo "✅ No test files in package"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ephemeral-broker-package
+          path: '*.tgz'
