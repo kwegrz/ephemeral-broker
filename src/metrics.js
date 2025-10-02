@@ -31,6 +31,13 @@ export class Metrics {
       leasesExpired: 0
     }
 
+    // Capacity metrics
+    this.capacity = {
+      items: 0,
+      maxItems: 0,
+      utilization: 0
+    }
+
     // Request metrics
     this.requests = {
       total: 0,
@@ -77,6 +84,14 @@ export class Metrics {
     this.requests.total++
     this.requests.inFlight = inFlight
     this.requests.draining = draining ? 1 : 0
+  }
+
+  recordCapacity(items, maxItems, utilization) {
+    if (!this.options.enabled) return
+
+    this.capacity.items = items
+    this.capacity.maxItems = maxItems
+    this.capacity.utilization = utilization
   }
 
   getCompressionRatio() {
@@ -144,6 +159,19 @@ export class Metrics {
     lines.push('# TYPE ephemeral_broker_draining gauge')
     lines.push(`ephemeral_broker_draining ${this.requests.draining}`)
 
+    // Capacity metrics
+    lines.push('# HELP ephemeral_broker_capacity_items Current number of items')
+    lines.push('# TYPE ephemeral_broker_capacity_items gauge')
+    lines.push(`ephemeral_broker_capacity_items ${this.capacity.items}`)
+
+    lines.push('# HELP ephemeral_broker_capacity_max Maximum number of items')
+    lines.push('# TYPE ephemeral_broker_capacity_max gauge')
+    lines.push(`ephemeral_broker_capacity_max ${this.capacity.maxItems}`)
+
+    lines.push('# HELP ephemeral_broker_capacity_utilization Capacity utilization (0.0-1.0)')
+    lines.push('# TYPE ephemeral_broker_capacity_utilization gauge')
+    lines.push(`ephemeral_broker_capacity_utilization ${this.capacity.utilization.toFixed(4)}`)
+
     return lines.join('\n') + '\n'
   }
 
@@ -163,6 +191,12 @@ export class Metrics {
     this.storage = {
       itemsExpired: 0,
       leasesExpired: 0
+    }
+
+    this.capacity = {
+      items: 0,
+      maxItems: 0,
+      utilization: 0
     }
 
     this.requests = {

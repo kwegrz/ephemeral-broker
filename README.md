@@ -184,7 +184,28 @@ await broker.start()
 readinessProbe:
   exec:
     command:
-      ['node', '-e', 'require("@ephemeral-broker/core").Client(process.env.EPHEMERAL_PIPE).ping()']
+      [
+        'node',
+        '-e',
+        'import("@ephemeral-broker/core").then(m => m.checkReadiness()).then(r => process.exit(r ? 0 : 1))'
+      ]
+  initialDelaySeconds: 2
+  periodSeconds: 5
+```
+
+Or create a probe script:
+
+```javascript
+// probe.js
+import { checkReadiness } from '@ephemeral-broker/core'
+const ready = await checkReadiness()
+process.exit(ready ? 0 : 1)
+```
+
+```yaml
+readinessProbe:
+  exec:
+    command: ['node', 'probe.js']
   initialDelaySeconds: 2
   periodSeconds: 5
 ```
@@ -201,21 +222,55 @@ resources:
 
 ### Monitoring
 
-Expose metrics for alerting:
+**Health checks:**
+
+```javascript
+const health = await client.health()
+// {
+//   ok: true,
+//   status: 'healthy' | 'degraded',
+//   capacity: {
+//     items: 42,
+//     maxItems: 10000,
+//     utilization: 0.0042,
+//     nearCapacity: false,
+//     atCapacity: false,
+//     warning: null | 'near_capacity' | 'at_capacity'
+//   },
+//   memory: { rss, heapUsed, heapTotal },
+//   connections: { inFlight, draining }
+// }
+```
+
+**Stats and metrics:**
 
 ```javascript
 const stats = await client.stats()
-// { items: 42, leases: 3, memory: {...}, uptime: 12345 }
+// { items, leases, capacity, memory, uptime }
 
 const metrics = await client.metrics()
-// Prometheus format
+// Prometheus format including:
+// - ephemeral_broker_capacity_items
+// - ephemeral_broker_capacity_max
+// - ephemeral_broker_capacity_utilization
 ```
 
 **Recommended alerts:**
 
-- `broker_items / max_items > 0.9` - Near capacity
+- `ephemeral_broker_capacity_utilization > 0.9` - Near capacity
+- `ephemeral_broker_capacity_utilization >= 1.0` - At capacity
 - `broker_sweeps_total` stalled for >60s - Sweeper unhealthy
-- `broker_rejects_total` increasing - Hit limits
+- `broker_expired_total` increasing rapidly - Check TTL settings
+
+**Capacity warnings:**
+
+Broker automatically logs warnings when ≥90% full:
+
+```
+[broker] Broker approaching capacity (items=9000 maxItems=10000 utilization=0.9)
+```
+
+Health endpoint returns `status: 'degraded'` when at 100% capacity.
 
 ⸻
 

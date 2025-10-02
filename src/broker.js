@@ -569,15 +569,58 @@ export class Broker {
     return { ok: true, released: existed }
   }
 
+  getCapacityStatus() {
+    const now = Date.now()
+    let activeItems = 0
+
+    // Count non-expired items
+    for (const [, item] of this.store.entries()) {
+      if (!item.expires || item.expires > now) {
+        activeItems++
+      }
+    }
+
+    const maxItems = this.options.maxItems
+    const utilization = maxItems > 0 ? activeItems / maxItems : 0
+    const nearCapacity = utilization >= 0.9
+    const atCapacity = utilization >= 1.0
+
+    return {
+      items: activeItems,
+      maxItems,
+      utilization: Math.round(utilization * 100) / 100,
+      nearCapacity,
+      atCapacity,
+      warning: nearCapacity ? (atCapacity ? 'at_capacity' : 'near_capacity') : null
+    }
+  }
+
   handleHealth() {
     const now = Date.now()
     const mem = process.memoryUsage()
+    const capacity = this.getCapacityStatus()
+
+    // Record capacity metrics
+    this.metrics.recordCapacity(capacity.items, capacity.maxItems, capacity.utilization)
+
+    // Log warning if near capacity
+    if (capacity.nearCapacity && !this._lastCapacityWarning) {
+      this.logger.warn('Broker approaching capacity', {
+        items: capacity.items,
+        maxItems: capacity.maxItems,
+        utilization: capacity.utilization
+      })
+      this._lastCapacityWarning = now
+    } else if (!capacity.nearCapacity) {
+      this._lastCapacityWarning = null
+    }
 
     return {
       ok: true,
-      status: 'healthy',
+      status: capacity.atCapacity ? 'degraded' : 'healthy',
       uptime: this.startTime ? now - this.startTime : 0,
       timestamp: now,
+      capacity,
       memory: {
         rss: mem.rss,
         heapUsed: mem.heapUsed,
@@ -626,11 +669,14 @@ export class Broker {
       }
     }
 
+    const capacity = this.getCapacityStatus()
+
     return {
       ok: true,
       stats: {
         items: activeItems,
         leases: activeLeases,
+        capacity,
         memory: {
           rss: process.memoryUsage().rss,
           heapUsed: process.memoryUsage().heapUsed,
