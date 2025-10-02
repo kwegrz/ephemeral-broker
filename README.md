@@ -257,10 +257,86 @@ const metrics = await client.metrics()
 
 **Recommended alerts:**
 
-- `ephemeral_broker_capacity_utilization > 0.9` - Near capacity
-- `ephemeral_broker_capacity_utilization >= 1.0` - At capacity
-- `broker_sweeps_total` stalled for >60s - Sweeper unhealthy
-- `broker_expired_total` increasing rapidly - Check TTL settings
+```yaml
+# Prometheus AlertManager rules
+groups:
+  - name: ephemeral-broker
+    rules:
+      # Capacity alerts
+      - alert: BrokerNearCapacity
+        expr: ephemeral_broker_capacity_utilization > 0.9
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Broker approaching capacity ({{ $value | humanizePercentage }})'
+          description: 'Broker has {{ $value | humanizePercentage }} capacity utilization'
+
+      - alert: BrokerAtCapacity
+        expr: ephemeral_broker_capacity_utilization >= 1.0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Broker at full capacity'
+          description: 'Broker is rejecting new items (maxItems reached)'
+
+      # Performance alerts
+      - alert: BrokerHighLatency
+        expr: rate(ephemeral_broker_operations_total{result="error"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Broker error rate high ({{ $value | humanize }} errors/sec)'
+
+      - alert: BrokerSweeperStalled
+        expr: rate(ephemeral_broker_expired_total[2m]) == 0 and ephemeral_broker_capacity_items > 100
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'TTL sweeper may be stalled'
+          description: 'No expired items swept in 2 minutes despite high item count'
+
+      # Memory alerts
+      - alert: BrokerMemoryHigh
+        expr: process_resident_memory_bytes > 512000000 # 512MB
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Broker memory usage high ({{ $value | humanize1024 }}B)'
+
+      # Health alerts
+      - alert: BrokerDown
+        expr: up{job="ephemeral-broker"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: 'Broker is down'
+```
+
+**Grafana dashboard queries:**
+
+```promql
+# Capacity utilization over time
+ephemeral_broker_capacity_utilization
+
+# Items vs max capacity
+ephemeral_broker_capacity_items / ephemeral_broker_capacity_max
+
+# Operation success rate
+rate(ephemeral_broker_operations_total{result="success"}[5m]) /
+rate(ephemeral_broker_operations_total[5m])
+
+# Compression efficiency
+ephemeral_broker_compression_ratio
+
+# Expired items rate
+rate(ephemeral_broker_expired_total{type="items"}[5m])
+```
 
 **Capacity warnings:**
 
@@ -271,6 +347,144 @@ Broker automatically logs warnings when ≥90% full:
 ```
 
 Health endpoint returns `status: 'degraded'` when at 100% capacity.
+
+### Deployment Patterns
+
+**Pattern 1: Test Coordination (WDIO/Playwright)**
+
+```javascript
+// wdio.conf.js or playwright.config.js
+import { Broker } from '@ephemeral-broker/core'
+
+export async function globalSetup() {
+  const broker = new Broker({
+    maxItems: 1000,
+    defaultTTL: 600000, // 10 minutes
+    debug: process.env.CI === 'true'
+  })
+
+  await broker.start()
+
+  // Seed shared test data
+  const client = new Client(process.env.EPHEMERAL_PIPE)
+  await client.set('apiToken', process.env.API_TOKEN, 600000)
+  await client.set('testBaseUrl', process.env.TEST_URL, 600000)
+}
+```
+
+**Pattern 2: CI/CD Pipeline Coordination**
+
+```javascript
+// build.js - Main build process
+const broker = new Broker({ maxItems: 500 })
+await broker.start()
+
+// Share build artifacts info between parallel steps
+await client.set('buildId', buildId, 3600000)
+await client.set('artifactUrls', urls, 3600000)
+
+// Spawn parallel workers
+broker.spawn('node', ['deploy-worker.js'])
+```
+
+**Pattern 3: Kubernetes Job Coordination**
+
+```yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: test-suite
+spec:
+  template:
+    spec:
+      containers:
+        - name: test-runner
+          image: myapp:test
+          env:
+            - name: BROKER_MAX_ITEMS
+              value: '5000'
+            - name: BROKER_DEFAULT_TTL
+              value: '600000'
+            - name: BROKER_DEBUG
+              value: 'true'
+          command: ['node', 'run-tests.js']
+```
+
+**Pattern 4: Development Hot Reload**
+
+```javascript
+// dev-server.js
+const broker = new Broker({ maxItems: 100 })
+await broker.start()
+
+// Share rebuild state across dev tools
+await client.set('lastBuild', Date.now(), 60000)
+await client.set('changedFiles', changedFiles, 60000)
+
+// Watch processes can query state
+const lastBuild = await client.get('lastBuild')
+```
+
+### Performance Tuning
+
+**Optimize for your workload:**
+
+```javascript
+// High-throughput (many small values)
+const broker = new Broker({
+  maxItems: 50000,
+  maxValueSize: 10240, // 10KB
+  compression: false, // Skip compression overhead
+  sweeperInterval: 60000 // Sweep less frequently
+})
+
+// Large values (API responses, fixtures)
+const broker = new Broker({
+  maxItems: 1000,
+  maxValueSize: 1048576, // 1MB
+  compression: true,
+  compressionThreshold: 512 // Compress aggressively
+})
+
+// Low latency (real-time coordination)
+const client = new Client(pipePath, {
+  timeout: 1000, // Fail fast
+  compression: false // Skip compression
+})
+
+// Batch operations (CI/CD)
+const client = new Client(pipePath, {
+  timeout: 10000, // Allow retries
+  compression: true
+})
+```
+
+**Memory planning:**
+
+```javascript
+// Approximate memory per item: 1.5KB overhead + value size
+// For 10,000 items @ 10KB average value:
+// Memory = 10,000 × (1.5KB + 10KB) = ~115MB
+
+const broker = new Broker({
+  maxItems: 10000,
+  maxValueSize: 10240
+})
+// Set K8s memory limit to 256Mi (leaves 140MB for Node.js heap)
+```
+
+**TTL strategies:**
+
+```javascript
+// Short-lived secrets (refresh frequently)
+await client.set('apiToken', token, 60000) // 1 minute
+
+// Test fixtures (persist for test run)
+await client.set('testData', data, 600000) // 10 minutes
+
+// Build metadata (persist for deployment)
+await client.set('buildInfo', info, 3600000) // 1 hour
+```
 
 ⸻
 
