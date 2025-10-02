@@ -138,15 +138,13 @@ describe('Require TTL by default', () => {
       assert.strictEqual(value, 'value3')
     })
 
-    it('should still reject TTL = 0 even when requireTTL is false', async () => {
+    it('should accept TTL = 0 when requireTTL is false (uses defaultTTL)', async () => {
       const client = new Client(pipe, { debug: false, allowNoTtl: true })
 
       // When requireTTL is false and ttl is 0, it should use defaultTTL
-      // But our current implementation doesn't validate ttl=0 when requireTTL is false
-      // Let's verify actual behavior
       await client.set('key4', 'value4', 0)
 
-      // This should use defaultTTL since ttl is falsy
+      // This should use defaultTTL since ttl is 0 (falsy)
       const item = broker.store.get('key4')
       assert.ok(item.expires > Date.now(), 'Should use defaultTTL')
     })

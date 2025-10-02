@@ -23,11 +23,27 @@ export class Client {
 
   async request(payload) {
     const retryDelays = [50, 100, 200, 400, 800]
+    const totalTimeout = this.options.timeout
+    const startTime = Date.now()
     let lastError = null
 
     for (let attempt = 0; attempt <= retryDelays.length; attempt++) {
+      // Check if we've exceeded total timeout
+      const elapsed = Date.now() - startTime
+      if (elapsed >= totalTimeout) {
+        const timeoutErr = new Error(
+          `Request timeout after ${elapsed}ms (${attempt} attempts). Last error: ${lastError?.message || 'unknown'}`
+        )
+        timeoutErr.code = 'ETIMEOUT'
+        throw timeoutErr
+      }
+
       try {
-        return await this._attemptRequest(payload)
+        // Calculate remaining time for this attempt
+        const remainingTime = totalTimeout - elapsed
+        const attemptTimeout = Math.min(this.options.timeout, remainingTime)
+
+        return await this._attemptRequest(payload, attemptTimeout)
       } catch (err) {
         lastError = err
 
@@ -43,8 +59,14 @@ export class Client {
           throw lastError
         }
 
-        // Wait before next retry
+        // Wait before next retry (but check if we have time)
         const delay = retryDelays[attempt]
+        const elapsedAfterError = Date.now() - startTime
+        if (elapsedAfterError + delay >= totalTimeout) {
+          // Not enough time for another retry
+          throw lastError
+        }
+
         if (this.options.debug) {
           console.log(
             `[client] Connection failed (${err.code}), retrying in ${delay}ms (attempt ${attempt + 1}/${retryDelays.length})`
@@ -57,11 +79,12 @@ export class Client {
     throw lastError
   }
 
-  _attemptRequest(payload) {
+  _attemptRequest(payload, timeout) {
     return new Promise((resolve, reject) => {
       const socket = net.createConnection(this.pipe)
       let buffer = ''
       let timer
+      const requestTimeout = timeout || this.options.timeout
 
       socket.on('connect', () => {
         if (this.options.debug) {
@@ -75,8 +98,10 @@ export class Client {
 
         timer = setTimeout(() => {
           socket.destroy()
-          reject(new Error('Request timeout'))
-        }, this.options.timeout)
+          const err = new Error('Request timeout')
+          err.code = 'ETIMEDOUT'
+          reject(err)
+        }, requestTimeout)
       })
 
       socket.on('data', chunk => {
@@ -160,7 +185,14 @@ export class Client {
 
     // Decompress if needed
     if (response.compressed) {
-      return await this.decompressValue(response.value)
+      try {
+        return await this.decompressValue(response.value)
+      } catch (err) {
+        throw new Error(
+          `Failed to decompress value for key "${key}": ${err.message}. ` +
+            'This may indicate data corruption or a broker version mismatch.'
+        )
+      }
     }
 
     return response.value
@@ -182,11 +214,18 @@ export class Client {
     let afterSize = 0
 
     if (shouldCompress) {
-      const serialized = JSON.stringify(value)
-      beforeSize = serialized.length
-      finalValue = await this.compressValue(value)
-      afterSize = finalValue.length
-      compressed = true
+      try {
+        const serialized = JSON.stringify(value)
+        beforeSize = serialized.length
+        finalValue = await this.compressValue(value)
+        afterSize = finalValue.length
+        compressed = true
+      } catch (err) {
+        throw new Error(
+          `Failed to compress value for key "${key}": ${err.message}. ` +
+            'Hint: Check for circular references or non-serializable values.'
+        )
+      }
     }
 
     await this.request({

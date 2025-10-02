@@ -115,11 +115,27 @@ export class Broker {
   }
 
   setupSignalHandlers() {
+    // Skip if signal handlers already set up (prevents duplicate handlers)
+    if (this.signalHandlers.size > 0) {
+      this.logger.debug('Signal handlers already configured, skipping setup')
+      return
+    }
+
     const signals = ['SIGINT', 'SIGTERM']
 
     for (const signal of signals) {
       const handler = async () => {
         this.logger.info('Received shutdown signal', { signal })
+
+        // If child process exists, kill it gracefully first
+        if (this.child) {
+          this.logger.debug('Sending signal to child process', { signal })
+          this.child.kill(signal)
+
+          // Wait briefly for child to exit gracefully
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
+
         await this.drain()
         this.stop()
         process.exit(0)
@@ -301,7 +317,7 @@ export class Broker {
   }
 
   validateHMAC(msg) {
-    if (!msg.hmac) {
+    if (!msg.hmac || typeof msg.hmac !== 'string') {
       return false
     }
 
@@ -320,7 +336,22 @@ export class Broker {
       .digest('hex')
 
     // Constant-time comparison to prevent timing attacks
-    return crypto.timingSafeEqual(Buffer.from(clientHMAC, 'hex'), Buffer.from(expectedHMAC, 'hex'))
+    // Wrap in try/catch to handle invalid hex input (prevents DoS)
+    try {
+      const clientBuffer = Buffer.from(clientHMAC, 'hex')
+      const expectedBuffer = Buffer.from(expectedHMAC, 'hex')
+
+      // Ensure buffers are same length (timingSafeEqual requires this)
+      if (clientBuffer.length !== expectedBuffer.length) {
+        return false
+      }
+
+      return crypto.timingSafeEqual(clientBuffer, expectedBuffer)
+    } catch (err) {
+      // Invalid hex format or other buffer creation error
+      this.logger.debug('HMAC validation failed due to invalid format', { error: err.message })
+      return false
+    }
   }
 
   async compressValue(value) {
@@ -364,12 +395,17 @@ export class Broker {
   }
 
   async handleSet({ key, value, ttl, compressed, beforeSize, afterSize }) {
-    // Validate TTL if requireTTL is enabled
+    // Always reject negative TTL values
+    if (ttl !== undefined && ttl !== null && ttl < 0) {
+      return { ok: false, error: 'invalid_ttl' }
+    }
+
+    // When requireTTL is enabled, also reject zero and missing TTL
     if (this.options.requireTTL) {
       if (ttl === undefined || ttl === null) {
         return { ok: false, error: 'ttl_required' }
       }
-      if (ttl <= 0) {
+      if (ttl === 0) {
         return { ok: false, error: 'invalid_ttl' }
       }
     }
@@ -404,12 +440,13 @@ export class Broker {
     }
 
     // Record compression metrics
-    if (compressed && beforeSize && afterSize) {
+    if (compressed && beforeSize !== undefined && afterSize !== undefined) {
       this.metrics.recordCompression(beforeSize, afterSize)
     } else if (!compressed) {
       this.metrics.recordUncompressed()
     }
 
+    // Use provided TTL or fall back to defaultTTL (0 is treated as no TTL, uses default)
     const expires = ttl ? Date.now() + ttl : Date.now() + this.options.defaultTTL
 
     // Store with compression flag
@@ -603,25 +640,19 @@ export class Broker {
       process.exit(code || 0)
     })
 
-    // Handle signals
-    for (const sig of ['SIGINT', 'SIGTERM']) {
-      process.on(sig, () => {
-        if (this.child) {
-          this.child.kill(sig)
-        }
-        this.stop()
-        process.exit(1)
-      })
-    }
+    // Note: Signal handlers are already set up in setupSignalHandlers()
+    // They handle both broker shutdown and child process termination
+    // No need to add duplicate handlers here
 
     return this.child
   }
 
   startSweeper() {
-    // Run sweeper every 30 seconds
+    // Use configured interval or default to 30 seconds
+    const interval = this.options.sweeperInterval || 30000
     this.sweeperInterval = setInterval(() => {
       this.sweepExpired()
-    }, 30000)
+    }, interval)
 
     // Don't let the interval keep the process alive
     this.sweeperInterval.unref()
