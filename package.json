@@ -1,6 +1,6 @@
 {
   "name": "@ephemeral-broker/core",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Fast, secure, ephemeral IPC over pipes. Share secrets, tokens, and small state between parallel processes without touching disk or opening ports.",
   "type": "module",
   "main": "src/index.js",
