@@ -62,7 +62,8 @@ describe('Require TTL by default', () => {
     it('should accept set() with very small positive TTL', async () => {
       const client = new Client(pipe, { debug: false })
 
-      await client.set('key2', 'value2', 1)
+      // Use 100ms instead of 1ms to avoid race condition where key expires before get() completes
+      await client.set('key2', 'value2', 100)
       const value = await client.get('key2')
 
       assert.strictEqual(value, 'value2')
