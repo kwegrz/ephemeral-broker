@@ -42,7 +42,11 @@ describe('Graceful Shutdown', () => {
     })
 
     assert.ok(pipePath, 'Should have received pipe path')
-    assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+
+    // On Unix, verify socket file exists (Windows named pipes don't create files)
+    if (process.platform !== 'win32') {
+      assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+    }
 
     // Send SIGINT
     broker.kill('SIGINT')
@@ -60,8 +64,10 @@ describe('Graceful Shutdown', () => {
     // Give a moment for cleanup to complete
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // Verify socket file was cleaned up
-    assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGINT')
+    // On Unix, verify socket file was cleaned up (Windows named pipes don't create files)
+    if (process.platform !== 'win32') {
+      assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGINT')
+    }
   })
 
   it('should handle SIGTERM and cleanup socket file', async () => {
@@ -89,7 +95,11 @@ describe('Graceful Shutdown', () => {
     })
 
     assert.ok(pipePath, 'Should have received pipe path')
-    assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+
+    // On Unix, verify socket file exists (Windows named pipes don't create files)
+    if (process.platform !== 'win32') {
+      assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+    }
 
     // Send SIGTERM
     broker.kill('SIGTERM')
@@ -107,8 +117,10 @@ describe('Graceful Shutdown', () => {
     // Give a moment for cleanup to complete
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // Verify socket file was cleaned up
-    assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGTERM')
+    // On Unix, verify socket file was cleaned up (Windows named pipes don't create files)
+    if (process.platform !== 'win32') {
+      assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGTERM')
+    }
   })
 
   it('should exit with code 0 on graceful shutdown', async () => {
