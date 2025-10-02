@@ -162,6 +162,13 @@ describe('Graceful Shutdown', () => {
   })
 
   it('should exit with code 0 on graceful shutdown', async () => {
+    // Skip on Windows - child.kill('SIGINT') doesn't work the same way
+    // Windows will forcefully terminate the process
+    if (process.platform === 'win32') {
+      console.log('# Skipping on Windows - SIGINT behavior differs')
+      return
+    }
+
     const broker = createBrokerProcess()
 
     // Wait for broker to start
