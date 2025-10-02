@@ -75,6 +75,15 @@ export class Broker {
       this.server.once('error', reject)
 
       this.server.listen(this.pipe, () => {
+        // Set restrictive permissions on Unix domain socket (owner-only)
+        if (process.platform !== 'win32') {
+          try {
+            fs.chmodSync(this.pipe, 0o700)
+          } catch (err) {
+            this.logger.warn('Failed to set socket permissions', { error: err.message })
+          }
+        }
+
         this.logger.info('Broker started', { pipe: this.pipe })
 
         // Record start time for uptime calculation
