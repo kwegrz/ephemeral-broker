@@ -8,6 +8,7 @@ export interface BrokerOptions {
   maxValueSize?: number
   maxItems?: number
   pipeId?: string
+  secret?: string
 }
 
 export interface BrokerStats {
@@ -42,6 +43,7 @@ export class Broker {
   checkIfBrokerRunning(): Promise<boolean>
   handleConnection(socket: import('node:net').Socket): void
   processMessage(line: string, socket: import('node:net').Socket): Promise<void>
+  validateHMAC(msg: any): boolean
   handleGet(msg: { key: string }): { ok: boolean; value?: any; error?: string }
   handleSet(msg: { key: string; value: any; ttl?: number }): { ok: boolean; error?: string }
   handleDel(msg: { key: string }): { ok: boolean }

@@ -1,4 +1,5 @@
 import net from 'node:net'
+import crypto from 'node:crypto'
 
 export class Client {
   constructor(pipe, options = {}) {
@@ -12,6 +13,7 @@ export class Client {
       timeout: options.timeout || 5000,
       debug: options.debug || false,
       allowNoTtl: options.allowNoTtl || false,
+      secret: options.secret || process.env.EPHEMERAL_SECRET || null,
       ...options
     }
   }
@@ -63,7 +65,10 @@ export class Client {
           console.log(`[client] Connected to: ${this.pipe}`)
         }
 
-        socket.write(JSON.stringify(payload) + '\n')
+        // Add HMAC if secret is configured
+        const message = this.options.secret ? this.addHMAC(payload) : payload
+
+        socket.write(JSON.stringify(message) + '\n')
 
         timer = setTimeout(() => {
           socket.destroy()
@@ -103,6 +108,17 @@ export class Client {
         reject(err)
       })
     })
+  }
+
+  addHMAC(payload) {
+    // Compute HMAC for the payload
+    const payloadString = JSON.stringify(payload)
+    const hmac = crypto
+      .createHmac('sha256', this.options.secret)
+      .update(payloadString)
+      .digest('hex')
+
+    return { ...payload, hmac }
   }
 
   async get(key) {

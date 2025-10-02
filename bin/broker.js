@@ -19,6 +19,7 @@ program
   .option('--max-value-size <bytes>', 'Maximum value size in bytes', parseInt, 256 * 1024)
   .option('--debug', 'Enable debug logging', false)
   .option('--pipe-id <id>', 'Custom pipe ID')
+  .option('--secret <key>', 'HMAC secret key for authentication')
   .argument('[command...]', 'Command to run with the broker')
   .action(async (commandArgs, options) => {
     const broker = new Broker({
@@ -27,7 +28,8 @@ program
       maxRequestSize: options.maxRequestSize,
       maxValueSize: options.maxValueSize,
       debug: options.debug,
-      pipeId: options.pipeId
+      pipeId: options.pipeId,
+      secret: options.secret
     })
 
     try {

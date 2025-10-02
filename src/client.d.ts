@@ -2,6 +2,7 @@ export interface ClientOptions {
   timeout?: number
   debug?: boolean
   allowNoTtl?: boolean
+  secret?: string
 }
 
 export interface Stats {
@@ -28,6 +29,8 @@ export class Client {
     ttl?: number
     workerId?: string
   }): Promise<{ ok: boolean; value?: any; items?: any; pong?: number; stats?: Stats; released?: boolean; error?: string }>
+
+  addHMAC(payload: any): any
 
   get(key: string): Promise<any>
   set(key: string, value: any, ttl?: number): Promise<boolean>

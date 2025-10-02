@@ -1,5 +1,6 @@
 import net from 'node:net'
 import fs from 'node:fs'
+import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { makePipePath, cleanupPipe } from './pipe-utils.js'
 
@@ -11,6 +12,7 @@ export class Broker {
       maxRequestSize: options.maxRequestSize || 1024 * 1024, // 1MB default
       maxValueSize: options.maxValueSize || 256 * 1024, // 256KB default
       maxItems: options.maxItems !== undefined ? options.maxItems : 10000,
+      secret: options.secret || null, // Optional HMAC secret
       ...options
     }
 
@@ -192,6 +194,16 @@ export class Broker {
       return
     }
 
+    // Validate HMAC if secret is configured
+    if (this.options.secret) {
+      const isValid = this.validateHMAC(msg)
+      if (!isValid) {
+        socket.write(JSON.stringify({ ok: false, error: 'auth_failed' }) + '\n')
+        this.inFlightRequests--
+        return
+      }
+    }
+
     if (this.options.debug) {
       console.log(`[broker] Request: ${msg.action}`)
     }
@@ -230,6 +242,29 @@ export class Broker {
 
     // Decrement in-flight request counter
     this.inFlightRequests--
+  }
+
+  validateHMAC(msg) {
+    if (!msg.hmac) {
+      return false
+    }
+
+    // Extract HMAC from message
+    const clientHMAC = msg.hmac
+
+    // Create payload without HMAC field
+    const payload = { ...msg }
+    delete payload.hmac
+
+    // Compute expected HMAC
+    const payloadString = JSON.stringify(payload)
+    const expectedHMAC = crypto
+      .createHmac('sha256', this.options.secret)
+      .update(payloadString)
+      .digest('hex')
+
+    // Constant-time comparison to prevent timing attacks
+    return crypto.timingSafeEqual(Buffer.from(clientHMAC, 'hex'), Buffer.from(expectedHMAC, 'hex'))
   }
 
   handleGet({ key }) {
