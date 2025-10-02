@@ -31,11 +31,14 @@ export class Broker {
   sweeperInterval: NodeJS.Timeout | null
   startTime: number | null
   signalHandlers: Map<string, () => void>
+  draining: boolean
+  inFlightRequests: number
 
   constructor(options?: BrokerOptions)
 
   start(): Promise<string>
   setupSignalHandlers(): void
+  drain(timeout?: number): Promise<void>
   checkIfBrokerRunning(): Promise<boolean>
   handleConnection(socket: import('node:net').Socket): void
   processMessage(line: string, socket: import('node:net').Socket): Promise<void>

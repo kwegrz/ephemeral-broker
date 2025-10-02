@@ -22,6 +22,8 @@ export class Broker {
     this.sweeperInterval = null
     this.startTime = null
     this.signalHandlers = new Map()
+    this.draining = false
+    this.inFlightRequests = 0
   }
 
   async start() {
@@ -72,16 +74,47 @@ export class Broker {
     const signals = ['SIGINT', 'SIGTERM']
 
     for (const signal of signals) {
-      const handler = () => {
+      const handler = async () => {
         if (this.options.debug) {
           console.log(`[broker] Received ${signal}, shutting down gracefully...`)
         }
+        await this.drain()
         this.stop()
         process.exit(0)
       }
 
       this.signalHandlers.set(signal, handler)
       process.on(signal, handler)
+    }
+  }
+
+  async drain(timeout = 5000) {
+    if (this.draining) {
+      return
+    }
+
+    this.draining = true
+
+    if (this.options.debug) {
+      console.log(`[broker] Draining... ${this.inFlightRequests} requests in-flight`)
+    }
+
+    const startTime = Date.now()
+
+    // Wait for in-flight requests to complete or timeout
+    while (this.inFlightRequests > 0) {
+      if (Date.now() - startTime > timeout) {
+        if (this.options.debug) {
+          console.log(`[broker] Drain timeout - ${this.inFlightRequests} requests still in-flight`)
+        }
+        break
+      }
+      // Wait 10ms before checking again
+      await new Promise(resolve => setTimeout(resolve, 10))
+    }
+
+    if (this.options.debug && this.inFlightRequests === 0) {
+      console.log('[broker] Drain complete - all requests finished')
     }
   }
 
@@ -110,6 +143,13 @@ export class Broker {
   }
 
   handleConnection(socket) {
+    // Reject new connections during drain
+    if (this.draining) {
+      socket.write(JSON.stringify({ ok: false, error: 'draining' }) + '\n')
+      socket.end()
+      return
+    }
+
     let buffer = ''
 
     socket.on('data', chunk => {
@@ -140,11 +180,15 @@ export class Broker {
   }
 
   async processMessage(line, socket) {
+    // Track in-flight request
+    this.inFlightRequests++
+
     let msg
     try {
       msg = JSON.parse(line || '{}')
     } catch {
       socket.write(JSON.stringify({ ok: false, error: 'invalid_json' }) + '\n')
+      this.inFlightRequests--
       return
     }
 
@@ -183,6 +227,9 @@ export class Broker {
     }
 
     socket.write(JSON.stringify(response) + '\n')
+
+    // Decrement in-flight request counter
+    this.inFlightRequests--
   }
 
   handleGet({ key }) {
