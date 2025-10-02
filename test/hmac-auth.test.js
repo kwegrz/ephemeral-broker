@@ -12,6 +12,7 @@ describe('HMAC Authentication', () => {
       broker = new Broker({
         debug: false,
         secret,
+        requireTTL: false,
         pipeId: `test-hmac-${Date.now()}`
       })
       pipe = await broker.start()
@@ -99,6 +100,7 @@ describe('HMAC Authentication', () => {
     before(async () => {
       broker = new Broker({
         debug: false,
+        requireTTL: false,
         // No secret
         pipeId: `test-no-auth-${Date.now()}`
       })
@@ -145,6 +147,7 @@ describe('HMAC Authentication', () => {
 
       broker = new Broker({
         debug: false,
+        requireTTL: false,
         secret, // Broker still needs explicit secret
         pipeId: `test-env-${Date.now()}`
       })
@@ -174,6 +177,7 @@ describe('HMAC Authentication', () => {
     before(async () => {
       broker = new Broker({
         debug: false,
+        requireTTL: false,
         secret: 'test-secret',
         pipeId: `test-errors-${Date.now()}`
       })

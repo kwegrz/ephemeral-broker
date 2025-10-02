@@ -8,7 +8,7 @@ describe('Ephemeral Broker', () => {
   let pipe
 
   before(async () => {
-    broker = new Broker({ debug: false })
+    broker = new Broker({ debug: false, requireTTL: false })
     pipe = await broker.start()
     client = new Client(pipe, { debug: false, allowNoTtl: true })
   })

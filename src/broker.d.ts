@@ -9,6 +9,7 @@ export interface BrokerOptions {
   maxItems?: number
   pipeId?: string
   secret?: string
+  requireTTL?: boolean
 }
 
 export interface BrokerStats {

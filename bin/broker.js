@@ -20,6 +20,7 @@ program
   .option('--debug', 'Enable debug logging', false)
   .option('--pipe-id <id>', 'Custom pipe ID')
   .option('--secret <key>', 'HMAC secret key for authentication')
+  .option('--no-require-ttl', 'Allow set() without TTL (not recommended for production)')
   .argument('[command...]', 'Command to run with the broker')
   .action(async (commandArgs, options) => {
     const broker = new Broker({
@@ -29,7 +30,8 @@ program
       maxValueSize: options.maxValueSize,
       debug: options.debug,
       pipeId: options.pipeId,
-      secret: options.secret
+      secret: options.secret,
+      requireTTL: options.requireTtl
     })
 
     try {

@@ -9,7 +9,7 @@ async function testSweeperInterval() {
   console.log('Testing automatic sweeper interval (quick test with manual trigger)...')
 
   const testPipeId = 'test-interval-' + Date.now()
-  const broker = new Broker({ pipeId: testPipeId, debug: false })
+  const broker = new Broker({ pipeId: testPipeId, debug: false, requireTTL: false })
 
   try {
     // Start broker

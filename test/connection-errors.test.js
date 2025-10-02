@@ -23,7 +23,7 @@ describe('Connection Error Handling', () => {
     })
 
     it('should handle closed pipe after connection', async () => {
-      const broker = new Broker({ debug: false })
+      const broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       const client = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
 
@@ -44,7 +44,7 @@ describe('Connection Error Handling', () => {
 
   describe('Broker killed mid-run', () => {
     it('should error cleanly when broker is killed during operation', async () => {
-      const broker = new Broker({ debug: false })
+      const broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       const client = new Client(pipe, { timeout: 2000, debug: false, allowNoTtl: true })
 
@@ -69,7 +69,7 @@ describe('Connection Error Handling', () => {
     })
 
     it('should handle multiple clients when broker dies', async () => {
-      const broker = new Broker({ debug: false })
+      const broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
 
       const client1 = new Client(pipe, { timeout: 1000, debug: false, allowNoTtl: true })
@@ -102,7 +102,7 @@ describe('Connection Error Handling', () => {
 
   describe('Request timeout', () => {
     it('should timeout on slow server response', async () => {
-      const broker = new Broker({ debug: false })
+      const broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
 
       // Create a custom client that doesn't properly respond
@@ -139,7 +139,7 @@ describe('Connection Error Handling', () => {
     })
 
     it('should not retry on non-retryable errors', async () => {
-      const broker = new Broker({ debug: false, maxRequestSize: 100 })
+      const broker = new Broker({ debug: false, requireTTL: false, maxRequestSize: 100 })
       const pipe = await broker.start()
       const client = new Client(pipe, { timeout: 5000, debug: false, allowNoTtl: true })
 

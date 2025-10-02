@@ -21,7 +21,7 @@ async function testStaleSocketCleanup() {
   console.log(`Created fake stale socket at: ${sockPath}`)
 
   // Create broker and start it
-  const broker = new Broker({ pipeId: testPipeId, debug: true })
+  const broker = new Broker({ pipeId: testPipeId, debug: true, requireTTL: false })
 
   try {
     await broker.start()
@@ -38,8 +38,8 @@ async function testStaleSocketCleanup() {
   console.log('\nTesting already running broker detection...')
 
   const testPipeId2 = 'test-running-' + Date.now()
-  const broker1 = new Broker({ pipeId: testPipeId2, debug: true })
-  const broker2 = new Broker({ pipeId: testPipeId2, debug: true })
+  const broker1 = new Broker({ pipeId: testPipeId2, debug: true, requireTTL: false })
+  const broker2 = new Broker({ pipeId: testPipeId2, debug: true, requireTTL: false })
 
   try {
     // Start first broker

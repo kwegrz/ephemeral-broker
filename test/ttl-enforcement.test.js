@@ -7,7 +7,7 @@ describe('TTL Enforcement', () => {
   let pipe
 
   before(async () => {
-    broker = new Broker({ debug: false })
+    broker = new Broker({ debug: false, requireTTL: false })
     pipe = await broker.start()
   })
 

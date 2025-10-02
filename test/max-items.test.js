@@ -8,7 +8,7 @@ describe('Max Items Limit', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false, maxItems: 10 })
+      broker = new Broker({ debug: false, requireTTL: false, maxItems: 10 })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })
@@ -64,7 +64,7 @@ describe('Max Items Limit', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false, maxItems: 5 })
+      broker = new Broker({ debug: false, requireTTL: false, maxItems: 5 })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })
@@ -98,7 +98,7 @@ describe('Max Items Limit', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false, maxItems: 0 })
+      broker = new Broker({ debug: false, requireTTL: false, maxItems: 0 })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })
@@ -123,7 +123,7 @@ describe('Max Items Limit', () => {
 
   describe('Default maxItems limit', () => {
     it('should default to 10000 items', async () => {
-      const broker = new Broker({ debug: false })
+      const broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       const client = new Client(pipe, { debug: false, allowNoTtl: true })
 
@@ -148,7 +148,7 @@ describe('Max Items Limit', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false, maxItems: 10 })
+      broker = new Broker({ debug: false, requireTTL: false, maxItems: 10 })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })

@@ -9,7 +9,7 @@ describe('Graceful Drain Period', () => {
     let pipe
 
     before(async () => {
-      broker = new Broker({ debug: false, pipeId: `test-drain-${Date.now()}` })
+      broker = new Broker({ debug: false, requireTTL: false, pipeId: `test-drain-${Date.now()}` })
       pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })
@@ -62,7 +62,11 @@ describe('Graceful Drain Period', () => {
     let pipe
 
     before(async () => {
-      broker = new Broker({ debug: false, pipeId: `test-drain-reject-${Date.now()}` })
+      broker = new Broker({
+        debug: false,
+        requireTTL: false,
+        pipeId: `test-drain-reject-${Date.now()}`
+      })
       pipe = await broker.start()
       client = new Client(pipe, { debug: false, allowNoTtl: true })
     })
@@ -93,7 +97,11 @@ describe('Graceful Drain Period', () => {
     let broker
 
     before(async () => {
-      broker = new Broker({ debug: false, pipeId: `test-drain-wait-${Date.now()}` })
+      broker = new Broker({
+        debug: false,
+        requireTTL: false,
+        pipeId: `test-drain-wait-${Date.now()}`
+      })
       await broker.start()
     })
 

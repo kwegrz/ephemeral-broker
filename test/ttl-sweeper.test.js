@@ -9,7 +9,7 @@ async function testTTLSweeper() {
   console.log('Testing TTL sweeper functionality...')
 
   const testPipeId = 'test-sweeper-' + Date.now()
-  const broker = new Broker({ pipeId: testPipeId, debug: true })
+  const broker = new Broker({ pipeId: testPipeId, debug: true, requireTTL: false })
 
   try {
     // Start broker

@@ -13,6 +13,7 @@ export class Broker {
       maxValueSize: options.maxValueSize || 256 * 1024, // 256KB default
       maxItems: options.maxItems !== undefined ? options.maxItems : 10000,
       secret: options.secret || null, // Optional HMAC secret
+      requireTTL: options.requireTTL !== undefined ? options.requireTTL : true, // Require TTL by default
       ...options
     }
 
@@ -284,6 +285,16 @@ export class Broker {
   }
 
   handleSet({ key, value, ttl }) {
+    // Validate TTL if requireTTL is enabled
+    if (this.options.requireTTL) {
+      if (ttl === undefined || ttl === null) {
+        return { ok: false, error: 'ttl_required' }
+      }
+      if (ttl <= 0) {
+        return { ok: false, error: 'invalid_ttl' }
+      }
+    }
+
     // Check value size limit
     if (value && typeof value === 'string' && value.length > this.options.maxValueSize) {
       return { ok: false, error: 'too_large' }

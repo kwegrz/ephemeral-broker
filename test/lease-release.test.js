@@ -8,7 +8,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })
@@ -121,7 +121,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })
@@ -182,7 +182,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })
@@ -243,7 +243,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })
@@ -282,7 +282,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })
@@ -318,7 +318,7 @@ describe('Lease/Release for Parallel Workers', () => {
     let client
 
     before(async () => {
-      broker = new Broker({ debug: false })
+      broker = new Broker({ debug: false, requireTTL: false })
       const pipe = await broker.start()
       client = new Client(pipe, { debug: false })
     })

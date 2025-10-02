@@ -10,7 +10,8 @@ async function testSizeLimits() {
   const broker1 = new Broker({
     pipeId: testPipeId1,
     maxValueSize: 256_000, // 256KB
-    debug: true
+    debug: true,
+    requireTTL: false
   })
 
   try {
@@ -62,7 +63,8 @@ async function testSizeLimits() {
     pipeId: testPipeId2,
     maxRequestSize: 10_000, // 10KB
     maxValueSize: 100_000, // 100KB
-    debug: true
+    debug: true,
+    requireTTL: false
   })
 
   try {
@@ -98,7 +100,7 @@ async function testSizeLimits() {
   // Test 3: Default limits
   console.log('\nTest 3: Default limits')
   const testPipeId3 = 'test-defaults-' + Date.now()
-  const broker3 = new Broker({ pipeId: testPipeId3, debug: false })
+  const broker3 = new Broker({ pipeId: testPipeId3, debug: false, requireTTL: false })
 
   try {
     const pipePath = await broker3.start()
@@ -139,7 +141,8 @@ async function testSizeLimits() {
   const broker4 = new Broker({
     pipeId: testPipeId4,
     maxValueSize: 1000, // 1KB
-    debug: false
+    debug: false,
+    requireTTL: false
   })
 
   try {
