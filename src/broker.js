@@ -9,20 +9,37 @@ import { Metrics } from './metrics.js'
 
 export class Broker {
   constructor(options = {}) {
+    // Parse env vars with fallback to options
+    const parseEnvInt = (envVar, defaultValue) => {
+      const val = process.env[envVar]
+      return val !== undefined ? parseInt(val, 10) : defaultValue
+    }
+
+    const parseEnvBool = (envVar, defaultValue) => {
+      const val = process.env[envVar]
+      if (val === undefined) return defaultValue
+      return val === 'true' || val === '1'
+    }
+
     this.options = {
-      defaultTTL: options.defaultTTL || 30 * 60 * 1000, // 30 min
-      debug: options.debug || false,
-      maxRequestSize: options.maxRequestSize || 1024 * 1024, // 1MB default
-      maxValueSize: options.maxValueSize || 256 * 1024, // 256KB default
-      maxItems: options.maxItems !== undefined ? options.maxItems : 10000,
-      secret: options.secret || null, // Optional HMAC secret
-      requireTTL: options.requireTTL !== undefined ? options.requireTTL : true, // Require TTL by default
-      idleTimeout: options.idleTimeout || null, // Idle timeout in ms (disabled by default)
-      heartbeatInterval: options.heartbeatInterval || null, // Heartbeat interval in ms (disabled by default)
-      logLevel: options.logLevel || (options.debug ? 'debug' : 'info'), // Log level (debug, info, warn, error)
-      structuredLogging: options.structuredLogging || false, // JSON structured logs
-      compression: options.compression !== undefined ? options.compression : true, // Enable compression by default
-      compressionThreshold: options.compressionThreshold || 1024, // Compress values larger than 1KB
+      defaultTTL: options.defaultTTL ?? parseEnvInt('BROKER_DEFAULT_TTL', 30 * 60 * 1000), // 30 min
+      debug: options.debug ?? parseEnvBool('BROKER_DEBUG', false),
+      maxRequestSize: options.maxRequestSize ?? parseEnvInt('BROKER_MAX_REQUEST_SIZE', 1024 * 1024), // 1MB
+      maxValueSize: options.maxValueSize ?? parseEnvInt('BROKER_MAX_VALUE_SIZE', 256 * 1024), // 256KB
+      maxItems: options.maxItems ?? parseEnvInt('BROKER_MAX_ITEMS', 10000),
+      secret: options.secret ?? process.env.BROKER_SECRET ?? null, // Optional HMAC secret
+      requireTTL: options.requireTTL ?? parseEnvBool('BROKER_REQUIRE_TTL', true),
+      idleTimeout: options.idleTimeout ?? (parseEnvInt('BROKER_IDLE_TIMEOUT', 0) || null),
+      heartbeatInterval:
+        options.heartbeatInterval ?? (parseEnvInt('BROKER_HEARTBEAT_INTERVAL', 0) || null),
+      logLevel:
+        options.logLevel ?? process.env.BROKER_LOG_LEVEL ?? (options.debug ? 'debug' : 'info'),
+      structuredLogging:
+        options.structuredLogging ?? parseEnvBool('BROKER_STRUCTURED_LOGGING', false),
+      compression: options.compression ?? parseEnvBool('BROKER_COMPRESSION', true),
+      compressionThreshold:
+        options.compressionThreshold ?? parseEnvInt('BROKER_COMPRESSION_THRESHOLD', 1024),
+      sweeperInterval: options.sweeperInterval ?? parseEnvInt('BROKER_SWEEPER_INTERVAL', 30000),
       ...options
     }
 

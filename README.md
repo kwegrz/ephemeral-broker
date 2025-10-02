@@ -113,7 +113,9 @@ Ephemeral Broker is **production-ready for same-host, same-pod coordination**:
 
 ### Configuration
 
-Broker options can be set via constructor or environment variables:
+Broker and client options can be set via constructor **or environment variables**:
+
+**Broker:**
 
 ```javascript
 const broker = new Broker({
@@ -121,10 +123,44 @@ const broker = new Broker({
   maxItems: 10000, // BROKER_MAX_ITEMS
   maxValueSize: 262144, // BROKER_MAX_VALUE_SIZE (256KB)
   maxRequestSize: 1048576, // BROKER_MAX_REQUEST_SIZE (1MB)
-  sweeperInterval: 30000, // BROKER_SWEEP_INTERVAL (30s)
-  requireTTL: true, // Enforce TTL on all keys
-  debug: false // BROKER_DEBUG
+  sweeperInterval: 30000, // BROKER_SWEEPER_INTERVAL (30s)
+  requireTTL: true, // BROKER_REQUIRE_TTL
+  debug: false, // BROKER_DEBUG
+  secret: 'hmac-secret', // BROKER_SECRET
+  compression: true, // BROKER_COMPRESSION
+  compressionThreshold: 1024, // BROKER_COMPRESSION_THRESHOLD
+  logLevel: 'info', // BROKER_LOG_LEVEL (debug, info, warn, error)
+  structuredLogging: false, // BROKER_STRUCTURED_LOGGING
+  idleTimeout: 0, // BROKER_IDLE_TIMEOUT (disabled by default)
+  heartbeatInterval: 0 // BROKER_HEARTBEAT_INTERVAL (disabled by default)
 })
+```
+
+**Client:**
+
+```javascript
+const client = new Client(pipePath, {
+  timeout: 5000, // CLIENT_TIMEOUT
+  debug: false, // CLIENT_DEBUG
+  allowNoTtl: false, // CLIENT_ALLOW_NO_TTL
+  secret: 'hmac-secret', // CLIENT_SECRET
+  compression: true, // CLIENT_COMPRESSION
+  compressionThreshold: 1024 // CLIENT_COMPRESSION_THRESHOLD
+})
+```
+
+**Environment variable usage:**
+
+```bash
+# Configure via environment
+export BROKER_DEFAULT_TTL=600000
+export BROKER_MAX_ITEMS=10000
+export BROKER_DEBUG=true
+export CLIENT_TIMEOUT=10000
+
+# Constructor args override env vars
+const broker = new Broker() // Uses env vars
+const broker2 = new Broker({ debug: false }) // Overrides BROKER_DEBUG
 ```
 
 ### Kubernetes Deployment

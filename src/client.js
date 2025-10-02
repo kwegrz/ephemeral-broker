@@ -10,13 +10,26 @@ export class Client {
       throw new Error('No pipe specified and EPHEMERAL_PIPE not set')
     }
 
+    // Parse env vars with fallback to options
+    const parseEnvInt = (envVar, defaultValue) => {
+      const val = process.env[envVar]
+      return val !== undefined ? parseInt(val, 10) : defaultValue
+    }
+
+    const parseEnvBool = (envVar, defaultValue) => {
+      const val = process.env[envVar]
+      if (val === undefined) return defaultValue
+      return val === 'true' || val === '1'
+    }
+
     this.options = {
-      timeout: options.timeout || 5000,
-      debug: options.debug || false,
-      allowNoTtl: options.allowNoTtl || false,
-      secret: options.secret || process.env.EPHEMERAL_SECRET || null,
-      compression: options.compression !== undefined ? options.compression : true,
-      compressionThreshold: options.compressionThreshold || 1024,
+      timeout: options.timeout ?? parseEnvInt('CLIENT_TIMEOUT', 5000),
+      debug: options.debug ?? parseEnvBool('CLIENT_DEBUG', false),
+      allowNoTtl: options.allowNoTtl ?? parseEnvBool('CLIENT_ALLOW_NO_TTL', false),
+      secret: options.secret ?? process.env.CLIENT_SECRET ?? null,
+      compression: options.compression ?? parseEnvBool('CLIENT_COMPRESSION', true),
+      compressionThreshold:
+        options.compressionThreshold ?? parseEnvInt('CLIENT_COMPRESSION_THRESHOLD', 1024),
       ...options
     }
   }
