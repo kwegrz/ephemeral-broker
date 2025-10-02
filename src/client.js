@@ -26,7 +26,11 @@ export class Client {
       timeout: options.timeout ?? parseEnvInt('CLIENT_TIMEOUT', 5000),
       debug: options.debug ?? parseEnvBool('CLIENT_DEBUG', false),
       allowNoTtl: options.allowNoTtl ?? parseEnvBool('CLIENT_ALLOW_NO_TTL', false),
-      secret: options.secret ?? process.env.CLIENT_SECRET ?? null,
+      secret:
+        options.secret ??
+        process.env.CLIENT_SECRET ??
+        process.env.EPHEMERAL_SECRET ?? // Backward compatibility
+        null,
       compression: options.compression ?? parseEnvBool('CLIENT_COMPRESSION', true),
       compressionThreshold:
         options.compressionThreshold ?? parseEnvInt('CLIENT_COMPRESSION_THRESHOLD', 1024),
