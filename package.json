@@ -60,9 +60,9 @@
     }
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
+    "test": "node scripts/run-tests.js",
     "test:watch": "node --test --watch test/*.test.js",
-    "coverage": "c8 --reporter=lcov --reporter=text node --test test/*.test.js",
+    "coverage": "c8 --reporter=lcov --reporter=text node scripts/run-tests.js",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
     "format": "prettier --write \"src/**/*.{js,json,md}\" \"test/**/*.{js,json,md}\" \"*.{js,json,md}\"",
