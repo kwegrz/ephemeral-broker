@@ -6,7 +6,8 @@
   "main": "src/index.js",
   "types": "src/index.d.ts",
   "bin": {
-    "ephemeral-broker": "./bin/broker.js"
+    "ephemeral-broker": "./bin/broker.js",
+    "brokerctl": "./bin/brokerctl.js"
   },
   "keywords": [
     "ipc",
