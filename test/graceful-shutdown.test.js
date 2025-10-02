@@ -4,9 +4,31 @@ import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
+import net from 'node:net'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
+
+// Helper to check if pipe/socket is accessible (works on both Unix and Windows)
+async function isPipeAccessible(pipePath) {
+  return new Promise(resolve => {
+    const client = net.createConnection(pipePath)
+
+    client.on('connect', () => {
+      client.end()
+      resolve(true)
+    })
+
+    client.on('error', () => {
+      resolve(false)
+    })
+
+    setTimeout(() => {
+      client.destroy()
+      resolve(false)
+    }, 1000)
+  })
+}
 
 // Helper to create a standalone broker process
 function createBrokerProcess() {
@@ -43,9 +65,13 @@ describe('Graceful Shutdown', () => {
 
     assert.ok(pipePath, 'Should have received pipe path')
 
-    // On Unix, verify socket file exists (Windows named pipes don't create files)
+    // Verify pipe/socket is accessible (works on both Unix and Windows)
+    const isAccessible = await isPipeAccessible(pipePath)
+    assert.ok(isAccessible, 'Pipe/socket should be accessible after broker starts')
+
+    // On Unix, also verify socket file exists
     if (process.platform !== 'win32') {
-      assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+      assert.ok(existsSync(pipePath), 'Socket file should exist on Unix')
     }
 
     // Send SIGINT
@@ -64,9 +90,13 @@ describe('Graceful Shutdown', () => {
     // Give a moment for cleanup to complete
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // On Unix, verify socket file was cleaned up (Windows named pipes don't create files)
+    // Verify pipe/socket is no longer accessible (works on both Unix and Windows)
+    const isStillAccessible = await isPipeAccessible(pipePath)
+    assert.ok(!isStillAccessible, 'Pipe/socket should be cleaned up after SIGINT')
+
+    // On Unix, also verify socket file was removed
     if (process.platform !== 'win32') {
-      assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGINT')
+      assert.ok(!existsSync(pipePath), 'Socket file should be removed on Unix after SIGINT')
     }
   })
 
@@ -96,9 +126,13 @@ describe('Graceful Shutdown', () => {
 
     assert.ok(pipePath, 'Should have received pipe path')
 
-    // On Unix, verify socket file exists (Windows named pipes don't create files)
+    // Verify pipe/socket is accessible (works on both Unix and Windows)
+    const isAccessible = await isPipeAccessible(pipePath)
+    assert.ok(isAccessible, 'Pipe/socket should be accessible after broker starts')
+
+    // On Unix, also verify socket file exists
     if (process.platform !== 'win32') {
-      assert.ok(existsSync(pipePath), 'Socket file should exist after broker starts')
+      assert.ok(existsSync(pipePath), 'Socket file should exist on Unix')
     }
 
     // Send SIGTERM
@@ -117,9 +151,13 @@ describe('Graceful Shutdown', () => {
     // Give a moment for cleanup to complete
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    // On Unix, verify socket file was cleaned up (Windows named pipes don't create files)
+    // Verify pipe/socket is no longer accessible (works on both Unix and Windows)
+    const isStillAccessible = await isPipeAccessible(pipePath)
+    assert.ok(!isStillAccessible, 'Pipe/socket should be cleaned up after SIGTERM')
+
+    // On Unix, also verify socket file was removed
     if (process.platform !== 'win32') {
-      assert.ok(!existsSync(pipePath), 'Socket file should be removed after SIGTERM')
+      assert.ok(!existsSync(pipePath), 'Socket file should be removed on Unix after SIGTERM')
     }
   })
 
