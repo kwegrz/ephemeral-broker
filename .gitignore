@@ -34,3 +34,18 @@ build/
 *.tmp
 tmp/
 temp/
+
+# Package tarballs
+*.tgz
+
+# Claude AI files
+.claude/
+CLAUDE.md
+ALL_FIXES_APPLIED.md
+FIXES_APPLIED.md
+ISSUES_AND_FIXES.md
+RELEASE_NOTES.md
+
+# Test artifacts
+test-results/
+playwright-report/

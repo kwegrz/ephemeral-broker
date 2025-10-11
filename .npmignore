@@ -2,6 +2,8 @@
 test/
 *.test.js
 test-*.js
+test-results/
+playwright-report/
 
 # Coverage
 coverage/
@@ -16,6 +18,8 @@ coverage/
 .editorconfig
 .vscode/
 .idea/
+benchmark/
+scripts/
 
 # Git
 .git/
@@ -24,6 +28,18 @@ coverage/
 
 # CI/CD
 .github/
+
+# Claude AI and internal docs
+.claude/
+CLAUDE.md
+ALL_FIXES_APPLIED.md
+FIXES_APPLIED.md
+ISSUES_AND_FIXES.md
+RELEASE_NOTES.md
+SECURITY_CHECKLIST.md
+
+# Package tarballs
+*.tgz
 
 # Misc
 *.log
