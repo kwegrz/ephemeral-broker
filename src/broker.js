@@ -29,6 +29,7 @@ export class Broker {
       maxItems: options.maxItems ?? parseEnvInt('BROKER_MAX_ITEMS', 10000),
       secret: options.secret ?? process.env.BROKER_SECRET ?? null, // Optional HMAC secret
       requireTTL: options.requireTTL ?? parseEnvBool('BROKER_REQUIRE_TTL', true),
+      refreshTTLOnGet: options.refreshTTLOnGet ?? parseEnvBool('BROKER_REFRESH_TTL_ON_GET', false),
       idleTimeout: options.idleTimeout ?? (parseEnvInt('BROKER_IDLE_TIMEOUT', 0) || null),
       heartbeatInterval:
         options.heartbeatInterval ?? (parseEnvInt('BROKER_HEARTBEAT_INTERVAL', 0) || null),
@@ -402,10 +403,18 @@ export class Broker {
       return { ok: false, error: 'not_found' }
     }
 
+    const now = Date.now()
+
     // Check if expired
-    if (item.expires && item.expires <= Date.now()) {
+    if (item.expires && item.expires <= now) {
       this.store.delete(key)
       return { ok: false, error: 'expired' }
+    }
+
+    // Refresh TTL on access (sliding expiration)
+    if (this.options.refreshTTLOnGet && item.expires) {
+      const originalTTL = item.expires - (item.createdAt || now)
+      item.expires = now + originalTTL
     }
 
     return { ok: true, value: item.value, compressed: item.compressed }
@@ -463,11 +472,18 @@ export class Broker {
       this.metrics.recordUncompressed()
     }
 
-    // Use provided TTL or fall back to defaultTTL (0 is treated as no TTL, uses default)
-    const expires = ttl ? Date.now() + ttl : Date.now() + this.options.defaultTTL
+    // Use provided TTL or fall back to defaultTTL
+    const now = Date.now()
+    const actualTTL = ttl || this.options.defaultTTL
+    const expires = now + actualTTL
 
-    // Store with compression flag
-    this.store.set(key, { value, expires, compressed: compressed || false })
+    // Store with createdAt for TTL refresh
+    this.store.set(key, {
+      value,
+      expires,
+      compressed: compressed || false,
+      createdAt: now
+    })
 
     this.logger.debug('Key set', {
       key,
